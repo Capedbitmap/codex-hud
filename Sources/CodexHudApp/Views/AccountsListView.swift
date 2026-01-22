@@ -218,8 +218,8 @@ private struct AccountHoverDetail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("C\(account.codexNumber) · \(account.email)")
-                .font(Typography.label)
-                .foregroundStyle(Theme.secondary)
+                .font(Typography.meta)
+                .foregroundStyle(Theme.muted)
                 .lineLimit(1)
                 .truncationMode(.middle)
 
@@ -241,11 +241,11 @@ private struct AccountHoverDetail: View {
 
             if let weeklyResetDate {
                 Text("Resets \(formatDate(weeklyResetDate))")
-                    .font(Typography.caption)
+                    .font(Typography.meta)
                     .foregroundStyle(Theme.muted)
             } else {
                 Text("Resets —")
-                    .font(Typography.caption)
+                    .font(Typography.meta)
                     .foregroundStyle(Theme.muted)
             }
         }
@@ -282,12 +282,12 @@ private struct HoverMetricRow: View {
                     .font(.system(size: 11, weight: .regular))
                     .foregroundStyle(Theme.muted)
                 Text(title)
-                    .font(Typography.caption)
+                    .font(Typography.meta)
                     .foregroundStyle(Theme.muted)
                 Spacer(minLength: 8)
                 Text(trailingText)
-                    .font(Typography.caption)
-                    .foregroundStyle(Theme.secondary)
+                    .font(Typography.meta)
+                    .foregroundStyle(Theme.muted)
             }
             Capsule()
                 .fill(Color.white.opacity(0.12))
