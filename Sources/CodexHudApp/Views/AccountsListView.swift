@@ -4,6 +4,10 @@ import CodexHudCore
 struct AccountsListView: View {
     @ObservedObject var viewModel: AppViewModel
     private let evaluator = AccountEvaluator()
+    private let columns = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12)
+    ]
 
     var body: some View {
         GlassCard {
@@ -17,27 +21,14 @@ struct AccountsListView: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Theme.muted)
                 } else {
-                    ForEach(viewModel.state.accounts, id: \.email) { account in
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(statusGradient(evaluator.status(for: account)))
-                                .frame(width: 8, height: 8)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Codex \(account.codexNumber)")
-                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                Text(account.email)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(Theme.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                            }
-                            Spacer()
-                            Text(statusLabel(evaluator.status(for: account)))
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(Theme.muted)
-                        }
-                        if account.email != viewModel.state.accounts.last?.email {
-                            GlassDivider()
+                    LazyVGrid(columns: columns, spacing: 10) {
+                        ForEach(viewModel.state.accounts, id: \.email) { account in
+                            AccountChip(
+                                account: account,
+                                status: evaluator.status(for: account),
+                                gradient: statusGradient(evaluator.status(for: account)),
+                                label: statusLabel(evaluator.status(for: account))
+                            )
                         }
                     }
                 }
@@ -65,5 +56,32 @@ struct AccountsListView: View {
         case .unknown:
             return "Unknown"
         }
+    }
+}
+
+private struct AccountChip: View {
+    let account: AccountRecord
+    let status: AccountStatus
+    let gradient: LinearGradient
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(gradient)
+                .frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("C\(account.codexNumber)")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                Text(label)
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(Theme.secondary)
+            }
+            Spacer()
+        }
+        .padding(8)
+        .background(
+            GlassSurface(cornerRadius: 12, material: .hudWindow, highlightOpacity: 0.25, strokeOpacity: 0.4)
+        )
     }
 }

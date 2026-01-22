@@ -5,8 +5,6 @@ struct MenuBarView: View {
     @ObservedObject var viewModel: AppViewModel
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
-
         VStack(alignment: .leading, spacing: 16) {
             HeaderView(viewModel: viewModel)
 
@@ -26,15 +24,12 @@ struct MenuBarView: View {
                 quitAction: { NSApp.terminate(nil) }
             )
         }
-        .padding(16)
+        .padding(18)
         .background(
-            shape
-                .fill(.ultraThinMaterial)
-                .overlay(shape.fill(Theme.background).opacity(0.35))
-                .overlay(shape.stroke(Theme.glassStroke, lineWidth: 1))
-                .shadow(color: Theme.glassShadow, radius: 16, x: 0, y: 8)
+            GlassSurface(cornerRadius: 26, material: .popover, highlightOpacity: 0.5, strokeOpacity: 0.7)
+                .shadow(color: Theme.glassShadow, radius: 20, x: 0, y: 10)
         )
-        .frame(width: 340)
+        .frame(width: 350)
     }
 }
 
@@ -48,9 +43,15 @@ private struct HeaderView: View {
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
                     .symbolRenderingMode(.hierarchical)
                 Spacer()
-                Text("v0")
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(Theme.secondary)
+                if let active = viewModel.activeAccount {
+                    Text("Codex \(active.codexNumber)")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            GlassSurface(cornerRadius: 10, material: .hudWindow, highlightOpacity: 0.3, strokeOpacity: 0.4)
+                        )
+                }
             }
             Text(activeLabel)
                 .font(.system(size: 12, weight: .medium, design: .rounded))

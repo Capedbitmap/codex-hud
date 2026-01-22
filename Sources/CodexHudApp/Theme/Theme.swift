@@ -3,19 +3,19 @@ import CodexHudCore
 
 enum Theme {
     static let background = LinearGradient(
-        colors: [Color.primary.opacity(0.08), Color.primary.opacity(0.02)],
+        colors: [Color.white.opacity(0.18), Color.clear],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
     static let glassStroke = LinearGradient(
-        colors: [Color.white.opacity(0.45), Color.white.opacity(0.05)],
+        colors: [Color.white.opacity(0.65), Color.white.opacity(0.05)],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
-    static let glassShadow = Color.black.opacity(0.14)
-    static let muted = Color.secondary.opacity(0.75)
+    static let glassShadow = Color.black.opacity(0.18)
+    static let muted = Color.secondary.opacity(0.7)
     static let secondary = Color.secondary
 
     static let readyGradient = LinearGradient(
@@ -44,6 +44,17 @@ enum Theme {
             return warningGradient
         case .critical:
             return criticalGradient
+        }
+    }
+
+    static func glow(for level: ThresholdLevel) -> Color {
+        switch level {
+        case .normal:
+            return Color.mint
+        case .warning:
+            return Color.orange
+        case .critical:
+            return Color.red
         }
     }
 }
