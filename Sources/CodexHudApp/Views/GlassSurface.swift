@@ -32,7 +32,7 @@ struct GlassSurface: View {
     var material: NSVisualEffectView.Material = .hudWindow
     var elevation: Elevation = .standard
     var tint: Color? = nil
-    var animateHighlight: Bool = true
+    var animateHighlight: Bool = false
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var highlightPhase: CGFloat = 0
@@ -47,8 +47,8 @@ struct GlassSurface: View {
                 .fill(Color.clear)
                 .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.24 : 0.08), radius: 1, x: 0, y: 1)
 
-            GlassEdgeHighlight(phase: highlightPhase)
-                .opacity(animateHighlight ? 0.55 : 0.35)
+            GlassEdgeHighlight(phase: animateHighlight ? highlightPhase : 0.5)
+                .opacity(0.25)
                 .blendMode(.screen)
 
             LinearGradient(
@@ -75,7 +75,7 @@ struct GlassSurface: View {
         .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowOffsetY)
         .onAppear {
             guard animateHighlight else { return }
-            withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
+            withAnimation(.easeInOut(duration: 10).repeatForever(autoreverses: true)) {
                 highlightPhase = 1
             }
         }

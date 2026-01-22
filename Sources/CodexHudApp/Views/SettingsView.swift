@@ -66,7 +66,7 @@ struct SettingsView: View {
         .padding(20)
         .frame(minWidth: 620)
         .background(
-            GlassSurface(cornerRadius: 24, material: .popover, elevation: .raised, tint: nil, animateHighlight: true)
+            GlassSurface(cornerRadius: 24, material: .popover, elevation: .raised, tint: nil, animateHighlight: false)
         )
         .onAppear { loadDrafts() }
     }
