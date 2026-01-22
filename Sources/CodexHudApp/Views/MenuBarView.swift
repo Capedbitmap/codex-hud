@@ -26,7 +26,7 @@ struct MenuBarView: View {
         }
         .padding(18)
         .background(
-            GlassSurface(cornerRadius: 26, material: .popover, elevation: .raised, tint: nil, animateHighlight: true)
+            GlassSurface(cornerRadius: 26, material: .popover, elevation: .raised, tint: nil, animateHighlight: false)
                 .shadow(color: Theme.glassShadow, radius: 20, x: 0, y: 12)
         )
         .frame(width: 350)
