@@ -17,6 +17,8 @@ final class AppViewModel: ObservableObject {
     private let helloSender: HelloSending
     private let refreshInterval: TimeInterval
     private var refreshTimer: Timer?
+    private var authWatcher: AuthFileWatcher?
+    private var lastAuthRefresh: Date?
 
     init(
         helloSender: HelloSending = CodexHelloSender(),
@@ -37,6 +39,7 @@ final class AppViewModel: ObservableObject {
         refreshActiveEmail()
         applyAssumedResets()
         startAutoRefresh()
+        startAuthWatcher()
     }
 
     var activeAccount: AccountRecord? {
@@ -146,6 +149,26 @@ final class AppViewModel: ObservableObject {
             }
         }
         refreshTimer?.tolerance = refreshInterval * 0.1
+        refreshFromLogs()
+    }
+
+    private func startAuthWatcher() {
+        authWatcher?.stop()
+        authWatcher = AuthFileWatcher(authURL: defaultAuthURL()) { [weak self] in
+            guard let self else { return }
+            Task { @MainActor in
+                self.handleAuthChange()
+            }
+        }
+        authWatcher?.start()
+    }
+
+    private func handleAuthChange() {
+        let now = Date()
+        if let last = lastAuthRefresh, now.timeIntervalSince(last) < 2 {
+            return
+        }
+        lastAuthRefresh = now
         refreshFromLogs()
     }
 
