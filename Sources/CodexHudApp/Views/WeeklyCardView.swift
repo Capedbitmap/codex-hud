@@ -9,44 +9,42 @@ struct WeeklyCardView: View {
         let remaining = viewModel.weeklyRemainingPercent
         let level = weeklyLevel(remaining)
 
-        GlassCard {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Label("Weekly", systemImage: "clock.arrow.circlepath")
-                        .font(Typography.cardTitle)
-                        .foregroundStyle(Theme.secondary)
-                    Spacer()
-                    if level == .critical {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(Theme.criticalGradient)
-                            .symbolRenderingMode(.hierarchical)
-                    }
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Weekly", systemImage: "clock.arrow.circlepath")
+                    .font(Typography.cardTitle)
+                    .foregroundStyle(Theme.secondary)
+                Spacer()
+                if level == .critical {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Theme.critical)
+                        .symbolRenderingMode(.hierarchical)
                 }
+            }
 
-                if let remaining {
-                    HStack(spacing: 16) {
-                        PremiumCircularGauge(progress: remaining.value, level: level)
-                            .frame(width: 96, height: 96)
+            if let remaining {
+                HStack(spacing: 16) {
+                    PremiumCircularGauge(progress: remaining.value, level: level)
+                        .frame(width: 96, height: 96)
 
-                        VStack(alignment: .leading, spacing: 6) {
-                            if let weekly {
-                                Text("Resets \(formatDate(weekly.resetsAt))")
-                                    .font(Typography.meta)
-                                    .foregroundStyle(Theme.muted)
-                                if weekly.isStale {
-                                    Text("Stale until refreshed")
-                                        .font(Typography.caption)
-                                        .foregroundStyle(Theme.warningGradient)
-                                }
+                    VStack(alignment: .leading, spacing: 6) {
+                        if let weekly {
+                            Text("Resets \(formatDate(weekly.resetsAt))")
+                                .font(Typography.meta)
+                                .foregroundStyle(Theme.muted)
+                            if weekly.isStale {
+                                Text("Stale until refreshed")
+                                    .font(Typography.caption)
+                                    .foregroundStyle(Theme.warning)
                             }
                         }
-                        Spacer()
                     }
-                } else {
-                    Text("No data")
-                        .font(Typography.cardValue)
-                        .foregroundStyle(Theme.secondary)
+                    Spacer()
                 }
+            } else {
+                Text("No data")
+                    .font(Typography.cardValue)
+                    .foregroundStyle(Theme.secondary)
             }
         }
     }

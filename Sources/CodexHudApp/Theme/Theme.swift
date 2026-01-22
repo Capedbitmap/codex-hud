@@ -12,45 +12,20 @@ enum Theme {
     static let muted = Color.primary.opacity(0.5)
     static let secondary = Color.primary.opacity(0.65)
 
-    static let readyGradient = LinearGradient(
-        colors: [PremiumColors.accent, PremiumColors.accentLight],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
+    static let accent = Color(red: 0.42, green: 0.48, blue: 0.55)
+    static let warning = Color(red: 0.78, green: 0.55, blue: 0.2)
+    static let critical = Color(red: 0.78, green: 0.33, blue: 0.36)
 
-    static let warningGradient = LinearGradient(
-        colors: [PremiumColors.warning, PremiumColors.warningLight],
-        startPoint: .top,
-        endPoint: .bottom
-    )
-
-    static let criticalGradient = LinearGradient(
-        colors: [PremiumColors.critical, PremiumColors.criticalGlow],
-        startPoint: .top,
-        endPoint: .bottom
-    )
-
-    static func gradient(for level: ThresholdLevel) -> LinearGradient {
+    static func color(for level: ThresholdLevel) -> Color {
         switch level {
         case .normal:
-            return readyGradient
+            return accent
         case .warning:
-            return warningGradient
+            return warning
         case .critical:
-            return criticalGradient
+            return critical
         }
     }
 
-    static func glow(for level: ThresholdLevel) -> Color {
-        switch level {
-        case .normal:
-            return PremiumColors.accentGlow
-        case .warning:
-            return PremiumColors.warning
-        case .critical:
-            return PremiumColors.criticalGlow
-        }
-    }
-
-    static let accentTint = PremiumColors.accent
+    static let accentTint = accent
 }

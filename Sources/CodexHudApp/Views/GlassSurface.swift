@@ -48,7 +48,7 @@ struct GlassSurface: View {
                 .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.24 : 0.08), radius: 1, x: 0, y: 1)
 
             GlassEdgeHighlight(phase: animateHighlight ? highlightPhase : 0.5)
-                .opacity(0.25)
+                .opacity(0.15)
                 .blendMode(.screen)
 
             LinearGradient(

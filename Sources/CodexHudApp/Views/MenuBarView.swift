@@ -5,18 +5,22 @@ struct MenuBarView: View {
     @ObservedObject var viewModel: AppViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             HeaderView(viewModel: viewModel)
+            AccountsListView(viewModel: viewModel)
+
+            GlassDivider()
 
             WeeklyCardView(viewModel: viewModel)
 
             if viewModel.shouldShowFiveHour {
+                GlassDivider()
                 FiveHourCardView(viewModel: viewModel)
             }
 
-            RecommendationView(viewModel: viewModel)
+            GlassDivider()
 
-            AccountsListView(viewModel: viewModel)
+            RecommendationView(viewModel: viewModel)
 
             FooterActionsView(
                 refreshAction: { viewModel.refreshFromLogs() },
@@ -26,10 +30,10 @@ struct MenuBarView: View {
         }
         .padding(18)
         .background(
-            GlassSurface(cornerRadius: 26, material: .popover, elevation: .raised, tint: nil, animateHighlight: false)
-                .shadow(color: Theme.glassShadow, radius: 20, x: 0, y: 12)
+            GlassSurface(cornerRadius: 26, material: .underWindowBackground, elevation: .standard, tint: nil, animateHighlight: false)
+                .shadow(color: Theme.glassShadow, radius: 14, x: 0, y: 8)
         )
-        .frame(width: 350)
+        .frame(width: 420)
     }
 }
 
@@ -66,7 +70,7 @@ private struct HeaderView: View {
             if let error = viewModel.lastError {
                 Text(error)
                     .font(Typography.caption)
-                    .foregroundStyle(Theme.criticalGradient)
+                    .foregroundStyle(Theme.critical)
             }
         }
     }

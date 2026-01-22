@@ -23,7 +23,7 @@ struct GlassTextField: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(isFocused ? Theme.readyGradient : LinearGradient(colors: [Color.clear], startPoint: .top, endPoint: .bottom), lineWidth: 1)
+                    .stroke(isFocused ? Theme.accent : Color.clear, lineWidth: 1)
             )
             .focused($isFocused)
     }
