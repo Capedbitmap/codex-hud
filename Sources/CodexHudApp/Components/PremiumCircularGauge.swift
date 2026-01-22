@@ -3,7 +3,7 @@ import CodexHudCore
 
 struct PremiumCircularGauge: View {
     let progress: Double
-    let level: ThresholdLevel
+    let tint: Color
 
     @State private var animatedProgress: Double = 0
     var body: some View {
@@ -15,7 +15,7 @@ struct PremiumCircularGauge: View {
             Circle()
                 .trim(from: 0, to: animatedProgress)
                 .stroke(
-                    Theme.color(for: level),
+                    tint,
                     style: StrokeStyle(lineWidth: 9, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
@@ -24,7 +24,7 @@ struct PremiumCircularGauge: View {
                 Text("\(Int(progress))")
                     .font(Typography.metric)
                     .monospacedDigit()
-                    .foregroundStyle(Theme.color(for: level))
+                    .foregroundStyle(tint)
                 Text("%")
                     .font(Typography.caption)
                     .foregroundStyle(Theme.secondary)
