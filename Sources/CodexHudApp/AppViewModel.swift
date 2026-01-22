@@ -1,0 +1,161 @@
+import Foundation
+import CodexHudCore
+
+@MainActor
+final class AppViewModel: ObservableObject {
+    @Published private(set) var state: AppState
+    @Published private(set) var lastError: String?
+    @Published private(set) var lastRefreshSource: SnapshotSource?
+
+    private let store: AppStateStore?
+    private let logParser = SessionLogParser()
+    private let authDecoder = AuthDecoder()
+    private let usageManager = UsageStateManager()
+
+    init() {
+        do {
+            store = try AppStateStore.defaultStore()
+        } catch {
+            store = nil
+        }
+        if let stored = try? store?.load() {
+            state = stored
+        } else {
+            state = AppState(accounts: [], activeEmail: nil, lastRefresh: nil)
+        }
+        refreshActiveEmail()
+        applyAssumedResets()
+    }
+
+    var activeAccount: AccountRecord? {
+        guard let activeEmail = state.activeEmail else { return nil }
+        return state.accounts.first { $0.email == activeEmail }
+    }
+
+    var recommendation: RecommendationDecision {
+        RecommendationEngine().recommend(accounts: state.accounts, activeEmail: state.activeEmail)
+    }
+
+    var weeklyRemainingPercent: Percent? {
+        guard let weeklyUsed = activeAccount?.lastSnapshot?.weekly.usedPercent,
+              let used = Percent(rawValue: weeklyUsed) else { return nil }
+        return Percent(rawValue: 100 - used.value)
+    }
+
+    var shouldShowFiveHour: Bool {
+        guard let remaining = weeklyRemainingPercent else { return false }
+        return remaining > UsageThresholds.default.depleted
+    }
+
+    func refreshFromLogs() {
+        lastError = nil
+        do {
+            let identity = try authDecoder.loadActiveAccount(from: defaultAuthURL())
+            state.activeEmail = identity.email
+            guard let accountIndex = state.accounts.firstIndex(where: { $0.email == identity.email }) else {
+                lastError = "Active account is not configured in Settings."
+                persist()
+                return
+            }
+            let event = try logParser.latestTokenCountEvent(in: defaultLogsURL())
+            guard let primary = event.primary, let secondary = event.secondary else {
+                lastError = "Usage data missing in logs."
+                persist()
+                return
+            }
+            let fiveHour = UsageWindow(
+                kind: .fiveHour,
+                usedPercent: primary.usedPercent,
+                windowMinutes: primary.windowMinutes,
+                resetsAt: primary.resetsAt,
+                isStale: false,
+                assumedReset: false
+            )
+            let weekly = UsageWindow(
+                kind: .weekly,
+                usedPercent: secondary.usedPercent,
+                windowMinutes: secondary.windowMinutes,
+                resetsAt: secondary.resetsAt,
+                isStale: false,
+                assumedReset: false
+            )
+            let snapshot = RateLimitsSnapshot(capturedAt: event.timestamp, fiveHour: fiveHour, weekly: weekly, source: .sessionLog)
+            state.accounts[accountIndex].lastSnapshot = snapshot
+            state.accounts[accountIndex].lastUpdated = Date()
+            state.lastRefresh = Date()
+            lastRefreshSource = snapshot.source
+            persist()
+        } catch {
+            lastError = "Unable to refresh from logs."
+        }
+    }
+
+    func saveAccounts(_ accounts: [AccountRecord]) {
+        let normalized = accounts.map { incoming -> AccountRecord in
+            if let existing = state.accounts.first(where: { $0.email == incoming.email }) {
+                return AccountRecord(
+                    codexNumber: incoming.codexNumber,
+                    email: incoming.email,
+                    displayName: incoming.displayName,
+                    lastSnapshot: existing.lastSnapshot,
+                    lastUpdated: existing.lastUpdated
+                )
+            }
+            return incoming
+        }
+        state.accounts = normalized.sorted { $0.codexNumber < $1.codexNumber }
+        if let activeEmail = state.activeEmail, !state.accounts.contains(where: { $0.email == activeEmail }) {
+            state.activeEmail = nil
+        }
+        persist()
+    }
+
+    func storagePath() -> String? {
+        store?.fileURL.path
+    }
+
+    private func refreshActiveEmail() {
+        do {
+            let identity = try authDecoder.loadActiveAccount(from: defaultAuthURL())
+            state.activeEmail = identity.email
+        } catch {
+            return
+        }
+    }
+
+    private func applyAssumedResets() {
+        guard let activeIndex = state.activeEmail.flatMap({ email in
+            state.accounts.firstIndex(where: { $0.email == email })
+        }) else { return }
+        guard let snapshot = state.accounts[activeIndex].lastSnapshot else { return }
+        let updated = usageManager.applyAssumedResetsIfNeeded(snapshot: snapshot, now: Date())
+        if updated != snapshot {
+            state.accounts[activeIndex].lastSnapshot = updated
+            persist()
+        }
+    }
+
+    private func persist() {
+        guard let store else { return }
+        do {
+            try store.save(state)
+        } catch {
+            lastError = "Unable to persist data."
+        }
+    }
+
+    private func defaultLogsURL() -> URL {
+        URL(fileURLWithPath: "~/.codex/sessions").expandingTildeInPath
+    }
+
+    private func defaultAuthURL() -> URL {
+        URL(fileURLWithPath: "~/.codex/auth.json").expandingTildeInPath
+    }
+}
+
+private extension URL {
+    var expandingTildeInPath: URL {
+        let path = (self.path as NSString).expandingTildeInPath
+        return URL(fileURLWithPath: path)
+    }
+}
