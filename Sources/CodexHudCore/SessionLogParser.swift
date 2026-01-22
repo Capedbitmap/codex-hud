@@ -46,27 +46,33 @@ public struct SessionLogParser {
 
     private func latestTokenCountEvent(inFile file: URL, since cutoff: Date?) throws -> TokenCountEvent? {
         let data = try String(contentsOf: file, encoding: .utf8)
-        var latest: TokenCountEvent?
-        for line in data.split(separator: "\n") {
-            guard let event = parseTokenCountLine(String(line)) else { continue }
-            if let cutoff, event.timestamp < cutoff { continue }
-            if let current = latest {
-                if event.timestamp > current.timestamp { latest = event }
-            } else {
-                latest = event
+        let lines = data.split(separator: "\n")
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let fallbackFormatter = ISO8601DateFormatter()
+        fallbackFormatter.formatOptions = [.withInternetDateTime]
+        for line in lines.reversed() {
+            guard let event = parseTokenCountLine(String(line), formatter: formatter, fallback: fallbackFormatter) else { continue }
+            if let cutoff, event.timestamp < cutoff {
+                return nil
             }
+            return event
         }
-        return latest
+        return nil
     }
 
-    private func parseTokenCountLine(_ line: String) -> TokenCountEvent? {
+    private func parseTokenCountLine(
+        _ line: String,
+        formatter: ISO8601DateFormatter,
+        fallback: ISO8601DateFormatter
+    ) -> TokenCountEvent? {
         guard line.contains("\"type\":\"event_msg\"") else { return nil }
         guard line.contains("\"token_count\"") else { return nil }
         guard let data = line.data(using: .utf8) else { return nil }
         guard let obj = try? JSONSerialization.jsonObject(with: data),
               let dict = obj as? [String: Any] else { return nil }
         guard let timestampRaw = dict["timestamp"] as? String else { return nil }
-        guard let timestamp = parseTimestamp(timestampRaw) else { return nil }
+        guard let timestamp = parseTimestamp(timestampRaw, formatter: formatter, fallback: fallback) else { return nil }
         guard let payload = dict["payload"] as? [String: Any] else { return nil }
         guard let rateLimits = payload["rate_limits"] as? [String: Any] else { return nil }
         let primary = parseRateLimit(rateLimits["primary"])
@@ -74,14 +80,15 @@ public struct SessionLogParser {
         return TokenCountEvent(timestamp: timestamp, primary: primary, secondary: secondary)
     }
 
-    private func parseTimestamp(_ raw: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    private func parseTimestamp(
+        _ raw: String,
+        formatter: ISO8601DateFormatter,
+        fallback: ISO8601DateFormatter
+    ) -> Date? {
         if let date = formatter.date(from: raw) {
             return date
         }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: raw)
+        return fallback.date(from: raw)
     }
 
     private func parseRateLimit(_ value: Any?) -> RateLimit? {
@@ -120,4 +127,5 @@ public struct SessionLogParser {
             return lhsDate > rhsDate
         }
     }
+
 }
