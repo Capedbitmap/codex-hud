@@ -15,6 +15,10 @@ let package = Package(
             name: "CodexHudApp",
             targets: ["CodexHudApp"]
         ),
+        .executable(
+            name: "CodexHudAutomation",
+            targets: ["CodexHudAutomation"]
+        ),
     ],
     targets: [
         .target(
@@ -22,6 +26,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "CodexHudApp",
+            dependencies: ["CodexHudCore"]
+        ),
+        .executableTarget(
+            name: "CodexHudAutomation",
             dependencies: ["CodexHudCore"]
         ),
         .testTarget(
