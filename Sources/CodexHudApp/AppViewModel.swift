@@ -19,6 +19,7 @@ final class AppViewModel: ObservableObject {
     private var refreshTimer: Timer?
     private var authWatcher: AuthFileWatcher?
     private var lastAuthRefresh: Date?
+    private var authChangeCutoff: Date?
 
     init(
         helloSender: HelloSending = CodexHelloSender(),
@@ -66,13 +67,13 @@ final class AppViewModel: ObservableObject {
         lastError = nil
         do {
             let identity = try authDecoder.loadActiveAccount(from: defaultAuthURL())
-            state.activeEmail = identity.email
+            updateActiveEmail(identity.email)
             guard let accountIndex = state.accounts.firstIndex(where: { $0.email == identity.email }) else {
                 lastError = "Active account is not configured in Settings."
                 persist()
                 return
             }
-            let event = try logParser.latestTokenCountEvent(in: defaultLogsURL())
+            let event = try logParser.latestTokenCountEvent(in: defaultLogsURL(), since: authChangeCutoff)
             guard let primary = event.primary, let secondary = event.secondary else {
                 lastError = "Usage data missing in logs."
                 attemptForcedRefresh(for: identity.email, hasAuth: true)
@@ -100,8 +101,18 @@ final class AppViewModel: ObservableObject {
             state.accounts[accountIndex].lastUpdated = Date()
             state.lastRefresh = Date()
             lastRefreshSource = snapshot.source
+            authChangeCutoff = nil
             persist()
             evaluateNotifications(for: state.accounts[accountIndex])
+        } catch let error as SessionLogError {
+            switch error {
+            case .noTokenCountEvents:
+                lastError = "No usage data yet for active account. Run /status once."
+            case .logsNotFound:
+                lastError = "Codex logs not found."
+            case .invalidPayload:
+                lastError = "Unable to parse usage logs."
+            }
         } catch {
             lastError = "Unable to refresh from logs."
         }
@@ -134,9 +145,16 @@ final class AppViewModel: ObservableObject {
     private func refreshActiveEmail() {
         do {
             let identity = try authDecoder.loadActiveAccount(from: defaultAuthURL())
-            state.activeEmail = identity.email
+            updateActiveEmail(identity.email)
         } catch {
             return
+        }
+    }
+
+    private func updateActiveEmail(_ email: String) {
+        if state.activeEmail != email {
+            state.activeEmail = email
+            authChangeCutoff = authFileModifiedAt() ?? Date()
         }
     }
 
@@ -237,6 +255,16 @@ final class AppViewModel: ObservableObject {
 
     private func defaultAuthURL() -> URL {
         URL(fileURLWithPath: "~/.codex/auth.json").expandingTildeInPath
+    }
+
+    private func authFileModifiedAt() -> Date? {
+        let url = defaultAuthURL()
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            return attributes[.modificationDate] as? Date
+        } catch {
+            return nil
+        }
     }
 
 }
