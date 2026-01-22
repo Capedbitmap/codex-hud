@@ -15,10 +15,21 @@ struct FiveHourCardView: View {
                     .foregroundStyle(Theme.secondary)
 
                 if let usedPercent {
-                    Text("\(Int(usedPercent))% used")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .foregroundStyle(Theme.readyGradient)
-                        .monospacedDigit()
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("\(Int(usedPercent))% used")
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundStyle(Theme.readyGradient)
+                            .monospacedDigit()
+
+                        Capsule()
+                            .fill(Color.white.opacity(0.12))
+                            .frame(height: 6)
+                            .overlay(alignment: .leading) {
+                                Capsule()
+                                    .fill(Theme.readyGradient)
+                                    .frame(width: max(6, 2.4 * CGFloat(usedPercent)), height: 6)
+                            }
+                    }
                 } else {
                     Text("No data")
                         .font(.system(size: 16, weight: .semibold, design: .rounded))

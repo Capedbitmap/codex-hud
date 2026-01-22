@@ -6,12 +6,12 @@ struct GlassButtonStyle: ButtonStyle {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.white.opacity(configuration.isPressed ? 0.16 : 0.08))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                GlassSurface(
+                    cornerRadius: 10,
+                    material: .hudWindow,
+                    highlightOpacity: configuration.isPressed ? 0.15 : 0.25,
+                    strokeOpacity: 0.4
+                )
             )
             .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
     }

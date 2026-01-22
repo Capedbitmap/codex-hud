@@ -13,16 +13,20 @@ struct RecommendationView: View {
                     .foregroundStyle(Theme.secondary)
 
                 if let account = decision.recommended {
-                    Text("Codex \(account.codexNumber)")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                    HStack {
+                        Text("Codex \(account.codexNumber)")
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .foregroundStyle(Theme.readyGradient)
+                        Spacer()
+                        Text(reasonLabel(decision.reason))
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(Theme.muted)
+                    }
                     Text(account.email)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Theme.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    Text(reasonLabel(decision.reason))
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Theme.muted)
                 } else {
                     Text("No recommendation")
                         .font(.system(size: 14, weight: .semibold, design: .rounded))

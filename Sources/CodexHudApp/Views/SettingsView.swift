@@ -67,7 +67,9 @@ struct SettingsView: View {
         }
         .padding(20)
         .frame(minWidth: 620)
-        .background(Theme.background)
+        .background(
+            GlassSurface(cornerRadius: 24, material: .popover, highlightOpacity: 0.5, strokeOpacity: 0.6)
+        )
         .onAppear { loadDrafts() }
     }
 
