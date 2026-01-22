@@ -81,4 +81,33 @@ public struct AppState: Codable, Equatable {
         self.forcedRefreshRecords = forcedRefreshRecords
         self.dailyHelloRecords = dailyHelloRecords
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case accounts
+        case activeEmail
+        case lastRefresh
+        case notificationLedger
+        case forcedRefreshRecords
+        case dailyHelloRecords
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.accounts = try container.decode([AccountRecord].self, forKey: .accounts)
+        self.activeEmail = try container.decodeIfPresent(String.self, forKey: .activeEmail)
+        self.lastRefresh = try container.decodeIfPresent(Date.self, forKey: .lastRefresh)
+        self.notificationLedger = try container.decodeIfPresent([String: ThresholdSnapshot].self, forKey: .notificationLedger) ?? [:]
+        self.forcedRefreshRecords = try container.decodeIfPresent([String: ForcedRefreshRecord].self, forKey: .forcedRefreshRecords) ?? [:]
+        self.dailyHelloRecords = try container.decodeIfPresent([String: DailyHelloRecord].self, forKey: .dailyHelloRecords) ?? [:]
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(accounts, forKey: .accounts)
+        try container.encodeIfPresent(activeEmail, forKey: .activeEmail)
+        try container.encodeIfPresent(lastRefresh, forKey: .lastRefresh)
+        try container.encode(notificationLedger, forKey: .notificationLedger)
+        try container.encode(forcedRefreshRecords, forKey: .forcedRefreshRecords)
+        try container.encode(dailyHelloRecords, forKey: .dailyHelloRecords)
+    }
 }
