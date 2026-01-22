@@ -5,6 +5,8 @@ struct MenuBarView: View {
     @ObservedObject var viewModel: AppViewModel
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
+
         VStack(alignment: .leading, spacing: 16) {
             HeaderView(viewModel: viewModel)
 
@@ -26,11 +28,13 @@ struct MenuBarView: View {
         }
         .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Theme.background)
-                .background(.ultraThinMaterial)
+            shape
+                .fill(.ultraThinMaterial)
+                .overlay(shape.fill(Theme.background).opacity(0.35))
+                .overlay(shape.stroke(Theme.glassStroke, lineWidth: 1))
+                .shadow(color: Theme.glassShadow, radius: 16, x: 0, y: 8)
         )
-        .frame(width: 360)
+        .frame(width: 340)
     }
 }
 
@@ -40,25 +44,28 @@ private struct HeaderView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Codex HUD")
-                    .font(.system(size: 16, weight: .semibold))
+                Label("Codex HUD", systemImage: "entry.lever.keypad")
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .symbolRenderingMode(.hierarchical)
                 Spacer()
                 Text("v0")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Theme.muted)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(Theme.secondary)
             }
             Text(activeLabel)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Theme.muted)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(Theme.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
             if let lastRefresh = viewModel.state.lastRefresh {
                 Text("Last refresh: \(formatDate(lastRefresh))")
-                    .font(.system(size: 11))
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundStyle(Theme.muted)
             }
             if let error = viewModel.lastError {
                 Text(error)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.critical)
+                    .foregroundStyle(Theme.criticalGradient)
             }
         }
     }
@@ -85,15 +92,15 @@ private struct FooterActionsView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Button("Refresh Now", action: refreshAction)
-                .buttonStyle(.borderedProminent)
+            Button("Refresh", action: refreshAction)
+                .buttonStyle(GlassButtonStyle())
             Button("Settings", action: settingsAction)
-                .buttonStyle(.bordered)
+                .buttonStyle(GlassButtonStyle())
             Spacer()
             Button("Quit", action: quitAction)
-                .buttonStyle(.borderless)
-                .foregroundStyle(Theme.muted)
+                .buttonStyle(GlassButtonStyle())
+                .foregroundStyle(Theme.secondary)
         }
-        .font(.system(size: 12, weight: .medium))
+        .font(.system(size: 12, weight: .semibold, design: .rounded))
     }
 }
