@@ -22,23 +22,34 @@ public struct SessionLogParser {
     public init() {}
 
     public func latestTokenCountEvent(in logsRoot: URL) throws -> TokenCountEvent {
+        try latestTokenCountEvent(in: logsRoot, since: nil)
+    }
+
+    public func latestTokenCountEvent(in logsRoot: URL, since cutoff: Date?) throws -> TokenCountEvent {
         guard FileManager.default.fileExists(atPath: logsRoot.path) else {
             throw SessionLogError.logsNotFound
         }
         let files = try jsonlFilesSortedByModificationDate(root: logsRoot)
+        var best: TokenCountEvent?
         for file in files {
-            if let event = try latestTokenCountEvent(inFile: file) {
-                return event
+            if let event = try latestTokenCountEvent(inFile: file, since: cutoff) {
+                if let current = best {
+                    if event.timestamp > current.timestamp { best = event }
+                } else {
+                    best = event
+                }
             }
         }
+        if let best { return best }
         throw SessionLogError.noTokenCountEvents
     }
 
-    private func latestTokenCountEvent(inFile file: URL) throws -> TokenCountEvent? {
+    private func latestTokenCountEvent(inFile file: URL, since cutoff: Date?) throws -> TokenCountEvent? {
         let data = try String(contentsOf: file, encoding: .utf8)
         var latest: TokenCountEvent?
         for line in data.split(separator: "\n") {
             guard let event = parseTokenCountLine(String(line)) else { continue }
+            if let cutoff, event.timestamp < cutoff { continue }
             if let current = latest {
                 if event.timestamp > current.timestamp { latest = event }
             } else {
