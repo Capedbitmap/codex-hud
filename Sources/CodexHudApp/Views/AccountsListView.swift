@@ -21,16 +21,17 @@ struct AccountsListView: View {
                         HStack(spacing: 10) {
                             ForEach(viewModel.state.accounts, id: \.email) { account in
                                 let status = evaluator.status(for: account)
-                                AccountStripItem(
-                                    account: account,
-                                    status: status,
-                                    weeklyRemainingPercent: remainingPercent(status),
-                                    weeklyTimeRemainingPercent: weeklyTimeRemainingPercent(account, now: context.date),
-                                    isActive: account.email == viewModel.state.activeEmail,
-                                    tooltip: tooltip(for: account, status: status, now: context.date)
-                                )
-                            }
+                            AccountStripItem(
+                                account: account,
+                                status: status,
+                                weeklyRemainingPercent: remainingPercent(status),
+                                weeklyTimeRemainingPercent: weeklyTimeRemainingPercent(account, now: context.date),
+                                isActive: account.email == viewModel.state.activeEmail,
+                                tooltip: tooltip(for: account, status: status, now: context.date),
+                                now: context.date
+                            )
                         }
+                    }
                         .padding(.vertical, 4)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -98,10 +99,13 @@ private struct AccountStripItem: View {
     let weeklyTimeRemainingPercent: Double?
     let isActive: Bool
     let tooltip: String
+    let now: Date
     @State private var isHovering = false
 
     var body: some View {
         let weeklyReset = weeklyResetDate
+        let timeText = weeklyReset.map { shortCountdownString(to: $0, now: now) }
+        let usageText = weeklyRemainingPercent.map { "\(Int($0))%" }
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Text("C\(account.codexNumber)")
@@ -119,13 +123,15 @@ private struct AccountStripItem: View {
                 systemImage: "clock",
                 percent: weeklyTimeRemainingPercent,
                 color: Theme.secondary,
-                height: 4
+                height: 4,
+                trailingText: timeText
             )
             AccountMetricRow(
                 systemImage: "chart.bar",
                 percent: weeklyRemainingPercent,
                 color: usageColor,
-                height: 3
+                height: 3,
+                trailingText: usageText
             )
         }
         .frame(width: 74)
@@ -168,6 +174,15 @@ private struct AccountStripItem: View {
             return nil
         }
     }
+
+    private func shortCountdownString(to date: Date, now: Date) -> String {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.day, .hour]
+        formatter.unitsStyle = .abbreviated
+        formatter.maximumUnitCount = 2
+        formatter.zeroFormattingBehavior = .dropAll
+        return formatter.string(from: now, to: date) ?? "—"
+    }
 }
 
 private struct AccountMetricRow: View {
@@ -175,14 +190,26 @@ private struct AccountMetricRow: View {
     let percent: Double?
     let color: Color
     let height: CGFloat
+    let trailingText: String?
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: systemImage)
-                .font(.system(size: 8, weight: .regular))
-                .foregroundStyle(Theme.muted)
-            AccountProgressBar(percent: percent, color: color, height: height)
-                .frame(maxWidth: .infinity)
+        ZStack(alignment: .trailing) {
+            HStack(spacing: 4) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 8, weight: .regular))
+                    .foregroundStyle(Theme.muted)
+                AccountProgressBar(percent: percent, color: color, height: height)
+                    .frame(maxWidth: .infinity)
+            }
+            if let trailingText {
+                Text(trailingText)
+                    .font(Typography.meta)
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .frame(width: 30, alignment: .trailing)
+                    .padding(.trailing, 1)
+            }
         }
     }
 }
