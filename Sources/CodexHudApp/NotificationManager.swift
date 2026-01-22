@@ -4,21 +4,25 @@ import CodexHudCore
 
 @MainActor
 final class NotificationManager {
-    private let center = UNUserNotificationCenter.current()
-
     func send(events: [NotificationEvent], recommendation: RecommendationDecision) {
         guard !events.isEmpty else { return }
-        Task { [weak self] in
-            guard let self else { return }
+        guard isRunningInAppBundle else { return }
+
+        Task {
+            let center = UNUserNotificationCenter.current()
             let granted = try? await center.requestAuthorization(options: [.alert, .sound])
             guard granted == true else { return }
             for event in events {
-                enqueue(event: event, recommendation: recommendation)
+                enqueue(event: event, recommendation: recommendation, center: center)
             }
         }
     }
 
-    private func enqueue(event: NotificationEvent, recommendation: RecommendationDecision) {
+    private var isRunningInAppBundle: Bool {
+        Bundle.main.bundleURL.pathExtension == "app"
+    }
+
+    private func enqueue(event: NotificationEvent, recommendation: RecommendationDecision, center: UNUserNotificationCenter) {
         let content = UNMutableNotificationContent()
         content.title = title(for: event)
         content.body = body(for: event, recommendation: recommendation)
