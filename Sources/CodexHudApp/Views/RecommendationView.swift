@@ -6,32 +6,30 @@ struct RecommendationView: View {
 
     var body: some View {
         let decision = viewModel.recommendation
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Recommended Next")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Theme.muted)
+        GlassCard {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Recommended Next", systemImage: "sparkle")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.secondary)
 
-            if let account = decision.recommended {
-                Text("Codex \(account.codexNumber)")
-                    .font(.system(size: 18, weight: .bold))
-                Text(account.email)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Theme.muted)
-                Text(reasonLabel(decision.reason))
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.muted)
-            } else {
-                Text("No recommendation")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.muted)
+                if let account = decision.recommended {
+                    Text("Codex \(account.codexNumber)")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                    Text(account.email)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text(reasonLabel(decision.reason))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.muted)
+                } else {
+                    Text("No recommendation")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.secondary)
+                }
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.ultraThinMaterial)
-        )
     }
 
     private func reasonLabel(_ reason: RecommendationReason) -> String {

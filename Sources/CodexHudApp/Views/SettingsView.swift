@@ -9,61 +9,65 @@ struct SettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Accounts")
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 18, weight: .semibold, design: .rounded))
 
-            VStack(spacing: 8) {
-                ForEach($drafts) { $draft in
-                    HStack(spacing: 12) {
-                        Text("Codex \(draft.codexNumber)")
-                            .frame(width: 70, alignment: .leading)
-                        TextField("Email", text: $draft.email)
-                            .textFieldStyle(.roundedBorder)
-                        TextField("Display name", text: $draft.displayName)
-                            .textFieldStyle(.roundedBorder)
+            GlassCard {
+                VStack(spacing: 10) {
+                    ForEach($drafts) { $draft in
+                        HStack(spacing: 12) {
+                            Text("Codex \(draft.codexNumber)")
+                                .frame(width: 70, alignment: .leading)
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            TextField("Email", text: $draft.email)
+                                .textFieldStyle(.roundedBorder)
+                            TextField("Display name", text: $draft.displayName)
+                                .textFieldStyle(.roundedBorder)
+                        }
                     }
                 }
             }
 
-            HStack {
+            HStack(spacing: 12) {
                 Button("Save") {
                     save()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(GlassButtonStyle())
                 .disabled(!isValid)
 
                 if let message {
                     Text(message)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Theme.muted)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(Theme.secondary)
                 }
 
                 Spacer()
             }
 
-            Divider()
+            GlassDivider()
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Diagnostics")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
                 if let path = viewModel.storagePath() {
                     Text("Storage: \(path)")
-                        .font(.system(size: 11))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
                         .foregroundStyle(Theme.muted)
                 }
                 if let lastRefresh = viewModel.state.lastRefresh {
                     Text("Last refresh: \(formatDate(lastRefresh))")
-                        .font(.system(size: 11))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
                         .foregroundStyle(Theme.muted)
                 }
                 if let source = viewModel.lastRefreshSource {
                     Text("Last source: \(source.rawValue)")
-                        .font(.system(size: 11))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
                         .foregroundStyle(Theme.muted)
                 }
             }
         }
         .padding(20)
         .frame(minWidth: 620)
+        .background(Theme.background)
         .onAppear { loadDrafts() }
     }
 
@@ -120,10 +124,11 @@ private struct AccountDraft: Identifiable {
     }
 
     func toAccountRecord() -> AccountRecord {
-        AccountRecord(
+        let trimmedName = displayName.trimmingCharacters(in: .whitespaces)
+        return AccountRecord(
             codexNumber: codexNumber,
             email: email.trimmingCharacters(in: .whitespaces),
-            displayName: displayName.trimmingCharacters(in: .whitespaces).isEmpty ? nil : displayName.trimmingCharacters(in: .whitespaces),
+            displayName: trimmedName.isEmpty ? nil : trimmedName,
             lastSnapshot: nil,
             lastUpdated: nil
         )

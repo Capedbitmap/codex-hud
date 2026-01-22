@@ -7,51 +7,53 @@ struct WeeklyCardView: View {
     var body: some View {
         let weekly = viewModel.activeAccount?.lastSnapshot?.weekly
         let remaining = viewModel.weeklyRemainingPercent
-        let accent = weeklyAccent(remaining)
+        let level = weeklyLevel(remaining)
+        let gradient = Theme.gradient(for: level)
 
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Weekly")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Theme.muted)
+        GlassCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Label("Weekly", systemImage: "clock.arrow.circlepath")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.secondary)
+                    Spacer()
+                    if level == .critical {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Theme.criticalGradient)
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                }
 
-            if let remaining {
-                Text("\(Int(remaining.value))% remaining")
-                    .font(.system(size: 26, weight: .bold))
-                    .foregroundStyle(accent)
-            } else {
-                Text("No data")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(Theme.muted)
-            }
+                if let remaining {
+                    Text("\(Int(remaining.value))%")
+                        .font(.system(size: 42, weight: .bold, design: .rounded))
+                        .foregroundStyle(gradient)
+                        .monospacedDigit()
+                } else {
+                    Text("No data")
+                        .font(.system(size: 24, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.secondary)
+                }
 
-            if let weekly {
-                Text("Reset: \(formatDate(weekly.resetsAt))")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Theme.muted)
-                if weekly.isStale {
-                    Text("Stale until refreshed")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Theme.warning)
+                if let weekly {
+                    Text("Resets \(formatDate(weekly.resetsAt))")
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Theme.muted)
+                    if weekly.isStale {
+                        Text("Stale until refreshed")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.warningGradient)
+                    }
                 }
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(accent.opacity(0.25), lineWidth: 1)
-                )
-        )
     }
 
-    private func weeklyAccent(_ remaining: Percent?) -> Color {
-        guard let remaining else { return Theme.accent }
-        if remaining <= UsageThresholds.default.depleted { return Theme.critical }
-        if remaining <= UsageThresholds.default.warning { return Theme.warning }
-        return Theme.accent
+    private func weeklyLevel(_ remaining: Percent?) -> ThresholdLevel {
+        guard let remaining else { return .normal }
+        if remaining <= UsageThresholds.default.depleted { return .critical }
+        if remaining <= UsageThresholds.default.warning { return .warning }
+        return .normal
     }
 
     private func formatDate(_ date: Date) -> String {

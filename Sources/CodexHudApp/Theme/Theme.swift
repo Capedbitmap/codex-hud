@@ -1,14 +1,49 @@
 import SwiftUI
+import CodexHudCore
 
 enum Theme {
     static let background = LinearGradient(
-        colors: [Color(red: 0.94, green: 0.96, blue: 0.98), Color(red: 0.84, green: 0.88, blue: 0.94)],
+        colors: [Color.primary.opacity(0.08), Color.primary.opacity(0.02)],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
-    static let accent = Color(red: 0.20, green: 0.45, blue: 0.85)
-    static let warning = Color(red: 0.90, green: 0.55, blue: 0.20)
-    static let critical = Color(red: 0.85, green: 0.20, blue: 0.20)
-    static let muted = Color(red: 0.45, green: 0.50, blue: 0.58)
+    static let glassStroke = LinearGradient(
+        colors: [Color.white.opacity(0.45), Color.white.opacity(0.05)],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    static let glassShadow = Color.black.opacity(0.14)
+    static let muted = Color.secondary.opacity(0.75)
+    static let secondary = Color.secondary
+
+    static let readyGradient = LinearGradient(
+        colors: [Color.mint, Color.teal],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    static let warningGradient = LinearGradient(
+        colors: [Color.orange, Color.yellow],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
+    static let criticalGradient = LinearGradient(
+        colors: [Color.red, Color.pink],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
+    static func gradient(for level: ThresholdLevel) -> LinearGradient {
+        switch level {
+        case .normal:
+            return readyGradient
+        case .warning:
+            return warningGradient
+        case .critical:
+            return criticalGradient
+        }
+    }
 }

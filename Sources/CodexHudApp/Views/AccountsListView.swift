@@ -6,52 +6,53 @@ struct AccountsListView: View {
     private let evaluator = AccountEvaluator()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Accounts")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Theme.muted)
+        GlassCard {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Accounts")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.secondary)
 
-            if viewModel.state.accounts.isEmpty {
-                Text("Configure accounts in Settings")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Theme.muted)
-            } else {
-                ForEach(viewModel.state.accounts, id: \.email) { account in
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(statusColor(evaluator.status(for: account)))
-                            .frame(width: 8, height: 8)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Codex \(account.codexNumber)")
-                                .font(.system(size: 12, weight: .semibold))
-                            Text(account.email)
-                                .font(.system(size: 11))
+                if viewModel.state.accounts.isEmpty {
+                    Text("Configure accounts in Settings")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.muted)
+                } else {
+                    ForEach(viewModel.state.accounts, id: \.email) { account in
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(statusGradient(evaluator.status(for: account)))
+                                .frame(width: 8, height: 8)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Codex \(account.codexNumber)")
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                Text(account.email)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Theme.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            Spacer()
+                            Text(statusLabel(evaluator.status(for: account)))
+                                .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(Theme.muted)
                         }
-                        Spacer()
-                        Text(statusLabel(evaluator.status(for: account)))
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Theme.muted)
+                        if account.email != viewModel.state.accounts.last?.email {
+                            GlassDivider()
+                        }
                     }
                 }
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.ultraThinMaterial)
-        )
     }
 
-    private func statusColor(_ status: AccountStatus) -> Color {
+    private func statusGradient(_ status: AccountStatus) -> LinearGradient {
         switch status {
         case .available:
-            return Theme.accent
+            return Theme.readyGradient
         case .depleted:
-            return Theme.critical
+            return Theme.criticalGradient
         case .unknown:
-            return Theme.muted
+            return LinearGradient(colors: [Theme.secondary, Theme.muted], startPoint: .top, endPoint: .bottom)
         }
     }
 
