@@ -7,8 +7,7 @@ struct FiveHourCardView: View {
     var body: some View {
         let fiveHour = viewModel.activeAccount?.lastSnapshot?.fiveHour
         let remainingPercent = fiveHour.map { max(0, min(100, 100 - $0.usedPercent)) }
-        let level = fiveHourLevel(remainingPercent)
-        let color = Theme.color(for: level)
+        let color = Theme.color(forRemainingPercent: remainingPercent)
 
         VStack(alignment: .leading, spacing: 8) {
             Label("5-Hour", systemImage: "timer")
@@ -58,14 +57,6 @@ struct FiveHourCardView: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
-    }
-
-    private func fiveHourLevel(_ remaining: Double?) -> ThresholdLevel {
-        guard let remaining,
-              let percent = Percent(rawValue: remaining) else { return .normal }
-        if percent <= UsageThresholds.default.depleted { return .critical }
-        if percent <= UsageThresholds.default.warning { return .warning }
-        return .normal
     }
 
     private func resetDetails(_ label: String, date: Date) -> String {

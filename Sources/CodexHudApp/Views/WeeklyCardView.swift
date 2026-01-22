@@ -8,6 +8,7 @@ struct WeeklyCardView: View {
         let weekly = viewModel.activeAccount?.lastSnapshot?.weekly
         let remaining = viewModel.weeklyRemainingPercent
         let level = weeklyLevel(remaining)
+        let color = Theme.color(forRemainingPercent: remaining?.value)
 
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -24,7 +25,7 @@ struct WeeklyCardView: View {
 
             if let remaining {
                 HStack(spacing: 16) {
-                    PremiumCircularGauge(progress: remaining.value, level: level)
+                    PremiumCircularGauge(progress: remaining.value, tint: color)
                         .frame(width: 96, height: 96)
 
                     VStack(alignment: .leading, spacing: 6) {

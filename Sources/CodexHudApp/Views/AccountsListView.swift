@@ -123,7 +123,7 @@ private struct AccountStripItem: View {
             AccountMetricRow(
                 systemImage: "chart.bar",
                 percent: weeklyRemainingPercent,
-                color: statusColor.opacity(0.9),
+                color: usageColor,
                 height: 3
             )
         }
@@ -138,14 +138,15 @@ private struct AccountStripItem: View {
         }
     }
 
-    private var statusColor: Color {
+    private var usageColor: Color {
+        if let weeklyRemainingPercent {
+            return Theme.color(forRemainingPercent: weeklyRemainingPercent).opacity(0.9)
+        }
         switch status {
-        case .available:
-            return Theme.accent
-        case .depleted:
-            return Theme.critical
         case .unknown:
             return Theme.muted
+        case .available, .depleted:
+            return Theme.secondary
         }
     }
 }
