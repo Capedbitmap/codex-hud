@@ -3,7 +3,6 @@ import CodexHudCore
 
 struct MenuBarView: View {
     @ObservedObject var viewModel: AppViewModel
-    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -21,7 +20,6 @@ struct MenuBarView: View {
 
             FooterActionsView(
                 refreshAction: { viewModel.refreshFromLogs() },
-                settingsAction: { openSettings() },
                 quitAction: { NSApp.terminate(nil) }
             )
         }
@@ -81,15 +79,16 @@ private struct HeaderView: View {
 
 private struct FooterActionsView: View {
     let refreshAction: () -> Void
-    let settingsAction: () -> Void
     let quitAction: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
             Button("Refresh Now", action: refreshAction)
                 .buttonStyle(.borderedProminent)
-            Button("Settings", action: settingsAction)
-                .buttonStyle(.bordered)
+            SettingsLink {
+                Text("Settings")
+            }
+            .buttonStyle(.bordered)
             Spacer()
             Button("Quit", action: quitAction)
                 .buttonStyle(.borderless)
