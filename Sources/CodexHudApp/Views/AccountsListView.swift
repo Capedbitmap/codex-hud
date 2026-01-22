@@ -18,7 +18,7 @@ struct AccountsListView: View {
             } else {
                 TimelineView(.periodic(from: .now, by: 60)) { context in
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
+                        HStack(spacing: 10) {
                             ForEach(viewModel.state.accounts, id: \.email) { account in
                                 let status = evaluator.status(for: account)
                                 AccountStripItem(
@@ -128,9 +128,9 @@ private struct AccountStripItem: View {
                 height: 3
             )
         }
-        .frame(width: 82)
+        .frame(width: 74)
         .padding(.vertical, 6)
-        .padding(.horizontal, 6)
+        .padding(.horizontal, 4)
         .contentShape(Rectangle())
         .onHover { hovering in
             isHovering = hovering
