@@ -30,7 +30,7 @@ struct MenuBarView: View {
         }
         .padding(18)
         .background(
-            GlassSurface(cornerRadius: 26, material: .hudWindow, elevation: .standard, tint: nil, animateHighlight: false)
+            GlassSurface(cornerRadius: 26, material: .popover, elevation: .standard, tint: nil, animateHighlight: false)
         )
         .frame(width: 460)
     }
