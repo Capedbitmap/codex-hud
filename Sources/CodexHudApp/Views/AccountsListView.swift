@@ -4,108 +4,105 @@ import CodexHudCore
 struct AccountsListView: View {
     @ObservedObject var viewModel: AppViewModel
     private let evaluator = AccountEvaluator()
-    private let columns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12)
-    ]
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Accounts")
-                    .font(Typography.cardTitle)
-                    .foregroundStyle(Theme.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Accounts")
+                .font(Typography.cardTitle)
+                .foregroundStyle(Theme.secondary)
 
-                if viewModel.state.accounts.isEmpty {
-                    Text("Configure accounts in Settings")
-                        .font(Typography.label)
-                        .foregroundStyle(Theme.muted)
-                } else {
-                    LazyVGrid(columns: columns, spacing: 10) {
+            if viewModel.state.accounts.isEmpty {
+                Text("Configure accounts in Settings")
+                    .font(Typography.label)
+                    .foregroundStyle(Theme.muted)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
                         ForEach(viewModel.state.accounts, id: \.email) { account in
-                            AccountChip(
+                            let status = evaluator.status(for: account)
+                            AccountStripItem(
                                 account: account,
-                                status: evaluator.status(for: account),
-                                gradient: statusGradient(evaluator.status(for: account)),
-                                label: statusLabel(evaluator.status(for: account)),
+                                status: status,
+                                remainingPercent: remainingPercent(status),
                                 isActive: account.email == viewModel.state.activeEmail
                             )
                         }
                     }
+                    .padding(.vertical, 4)
                 }
             }
         }
     }
 
-    private func statusGradient(_ status: AccountStatus) -> LinearGradient {
+    private func remainingPercent(_ status: AccountStatus) -> Double? {
         switch status {
-        case .available:
-            return Theme.readyGradient
-        case .depleted:
-            return Theme.criticalGradient
+        case .available(let state):
+            return state.remainingPercent.value
+        case .depleted(let state):
+            return state.remainingPercent.value
         case .unknown:
-            return LinearGradient(colors: [Theme.secondary, Theme.muted], startPoint: .top, endPoint: .bottom)
-        }
-    }
-
-    private func statusLabel(_ status: AccountStatus) -> String {
-        switch status {
-        case .available:
-            return "Ready"
-        case .depleted:
-            return "Depleted"
-        case .unknown:
-            return "Unknown"
+            return nil
         }
     }
 }
 
-private struct AccountChip: View {
+private struct AccountStripItem: View {
     let account: AccountRecord
     let status: AccountStatus
-    let gradient: LinearGradient
-    let label: String
+    let remainingPercent: Double?
     let isActive: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
-            ZStack {
-                Circle()
-                    .fill(gradient)
-                    .frame(width: 10, height: 10)
-                if case .available = status {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text("C\(account.codexNumber)")
+                    .font(Typography.chip)
+                    .foregroundStyle(isActive ? Color.primary : Theme.secondary)
+                if isActive {
                     Circle()
-                        .fill(gradient)
-                        .frame(width: 10, height: 10)
-                        .blur(radius: 4)
+                        .fill(Theme.accent)
+                        .frame(width: 6, height: 6)
                 }
+                Spacer(minLength: 0)
             }
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text("C\(account.codexNumber)")
-                        .font(Typography.chip)
-                        .foregroundStyle(isActive ? Color.primary : Theme.secondary)
-                    if isActive {
-                        Text("ACTIVE")
-                            .font(.system(size: 8, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule().fill(Theme.readyGradient)
-                            )
-                    }
-                }
-                Text(label)
-                    .font(Typography.caption)
-                    .foregroundStyle(Theme.muted)
-            }
-            Spacer()
+
+            AccountProgressBar(
+                percent: remainingPercent,
+                color: statusColor
+            )
         }
-        .padding(8)
-        .background(
-            GlassSurface(cornerRadius: 12, material: .hudWindow, elevation: isActive ? .raised : .inset, tint: isActive ? Theme.accentTint : nil, animateHighlight: false)
-        )
-        .animation(AppAnimations.snappy, value: isActive)
+        .frame(width: 84)
+    }
+
+    private var statusColor: Color {
+        switch status {
+        case .available:
+            return Theme.accent
+        case .depleted:
+            return Theme.critical
+        case .unknown:
+            return Theme.muted
+        }
+    }
+}
+
+private struct AccountProgressBar: View {
+    let percent: Double?
+    let color: Color
+
+    var body: some View {
+        Capsule()
+            .fill(Color.white.opacity(0.12))
+            .frame(height: 4)
+            .overlay(alignment: .leading) {
+                GeometryReader { proxy in
+                    Capsule()
+                        .fill(color)
+                        .frame(
+                            width: max(4, proxy.size.width * CGFloat((percent ?? 0) / 100)),
+                            height: 4
+                        )
+                }
+            }
     }
 }
