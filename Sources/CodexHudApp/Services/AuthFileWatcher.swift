@@ -2,7 +2,6 @@ import Foundation
 
 final class AuthFileWatcher {
     private let authURL: URL
-    private let directoryURL: URL
     private let queue: DispatchQueue
     private let onChange: () -> Void
     private var source: DispatchSourceFileSystemObject?
@@ -11,24 +10,24 @@ final class AuthFileWatcher {
 
     init(authURL: URL, onChange: @escaping () -> Void) {
         self.authURL = authURL
-        self.directoryURL = authURL.deletingLastPathComponent()
         self.queue = DispatchQueue(label: "codex.hud.authwatcher")
         self.onChange = onChange
     }
 
     func start() {
         stop()
-        fileDescriptor = open(directoryURL.path, O_EVTONLY)
+        guard FileManager.default.fileExists(atPath: authURL.path) else { return }
+        fileDescriptor = open(authURL.path, O_EVTONLY)
         guard fileDescriptor >= 0 else { return }
 
         source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fileDescriptor,
-            eventMask: [.write, .delete, .rename, .attrib],
+            eventMask: [.write, .delete, .rename],
             queue: queue
         )
 
         source?.setEventHandler { [weak self] in
-            self?.checkForAuthChange()
+            self?.handleEvent()
         }
 
         source?.setCancelHandler { [weak self] in
@@ -45,6 +44,15 @@ final class AuthFileWatcher {
     func stop() {
         source?.cancel()
         source = nil
+    }
+
+    private func handleEvent() {
+        let flags = source?.data ?? []
+        if flags.contains(.delete) || flags.contains(.rename) {
+            start()
+            return
+        }
+        checkForAuthChange()
     }
 
     private func checkForAuthChange() {

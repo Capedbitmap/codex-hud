@@ -22,6 +22,7 @@ final class AppViewModel: ObservableObject {
     private var lastAuthRefresh: Date?
     private var lastLogRefresh: Date?
     private var authChangeCutoff: Date?
+    private var isRefreshing = false
 
     init(
         helloSender: HelloSending = CodexHelloSender(),
@@ -71,57 +72,70 @@ final class AppViewModel: ObservableObject {
     }
 
     func refreshFromLogs() {
+        guard !isRefreshing else { return }
+        isRefreshing = true
         lastError = nil
-        do {
-            let identity = try authDecoder.loadActiveAccount(from: defaultAuthURL())
-            updateActiveEmail(identity.email)
-            guard let accountIndex = state.accounts.firstIndex(where: { $0.email == identity.email }) else {
-                lastError = "Active account is not configured in Settings."
+        let authURL = defaultAuthURL()
+        let logsURL = defaultLogsURL()
+
+        Task {
+            defer { isRefreshing = false }
+            do {
+                let identity = try authDecoder.loadActiveAccount(from: authURL)
+                updateActiveEmail(identity.email)
+                guard let accountIndex = state.accounts.firstIndex(where: { $0.email == identity.email }) else {
+                    lastError = "Active account is not configured in Settings."
+                    persist()
+                    return
+                }
+                let cutoff = authChangeCutoff
+                let event = try await Task.detached(priority: .utility) {
+                    let parser = SessionLogParser()
+                    return try parser.latestTokenCountEvent(in: logsURL, since: cutoff)
+                }.value
+
+                guard let primary = event.primary, let secondary = event.secondary else {
+                    lastError = "Usage data missing in logs."
+                    attemptForcedRefresh(for: identity.email, hasAuth: true)
+                    persist()
+                    return
+                }
+                let fiveHour = UsageWindow(
+                    kind: .fiveHour,
+                    usedPercent: primary.usedPercent,
+                    windowMinutes: primary.windowMinutes,
+                    resetsAt: primary.resetsAt,
+                    isStale: false,
+                    assumedReset: false
+                )
+                let weekly = UsageWindow(
+                    kind: .weekly,
+                    usedPercent: secondary.usedPercent,
+                    windowMinutes: secondary.windowMinutes,
+                    resetsAt: secondary.resetsAt,
+                    isStale: false,
+                    assumedReset: false
+                )
+                let snapshot = RateLimitsSnapshot(capturedAt: event.timestamp, fiveHour: fiveHour, weekly: weekly, source: .sessionLog)
+                state.accounts[accountIndex].lastSnapshot = snapshot
+                state.accounts[accountIndex].lastUpdated = Date()
+                state.lastRefresh = Date()
+                lastRefreshSource = snapshot.source
+                authChangeCutoff = nil
                 persist()
-                return
+                evaluateNotifications(for: state.accounts[accountIndex])
+            } catch let error as SessionLogError {
+                switch error {
+                case .noTokenCountEvents:
+                    lastError = "No usage data yet for active account. Run /status once."
+                case .logsNotFound:
+                    lastError = "Codex logs not found."
+                case .invalidPayload:
+                    lastError = "Unable to parse usage logs."
+                }
+            } catch {
+                lastError = "Unable to refresh from logs."
             }
-            let event = try logParser.latestTokenCountEvent(in: defaultLogsURL(), since: authChangeCutoff)
-            guard let primary = event.primary, let secondary = event.secondary else {
-                lastError = "Usage data missing in logs."
-                attemptForcedRefresh(for: identity.email, hasAuth: true)
-                persist()
-                return
-            }
-            let fiveHour = UsageWindow(
-                kind: .fiveHour,
-                usedPercent: primary.usedPercent,
-                windowMinutes: primary.windowMinutes,
-                resetsAt: primary.resetsAt,
-                isStale: false,
-                assumedReset: false
-            )
-            let weekly = UsageWindow(
-                kind: .weekly,
-                usedPercent: secondary.usedPercent,
-                windowMinutes: secondary.windowMinutes,
-                resetsAt: secondary.resetsAt,
-                isStale: false,
-                assumedReset: false
-            )
-            let snapshot = RateLimitsSnapshot(capturedAt: event.timestamp, fiveHour: fiveHour, weekly: weekly, source: .sessionLog)
-            state.accounts[accountIndex].lastSnapshot = snapshot
-            state.accounts[accountIndex].lastUpdated = Date()
-            state.lastRefresh = Date()
-            lastRefreshSource = snapshot.source
-            authChangeCutoff = nil
-            persist()
-            evaluateNotifications(for: state.accounts[accountIndex])
-        } catch let error as SessionLogError {
-            switch error {
-            case .noTokenCountEvents:
-                lastError = "No usage data yet for active account. Run /status once."
-            case .logsNotFound:
-                lastError = "Codex logs not found."
-            case .invalidPayload:
-                lastError = "Unable to parse usage logs."
-            }
-        } catch {
-            lastError = "Unable to refresh from logs."
         }
     }
 

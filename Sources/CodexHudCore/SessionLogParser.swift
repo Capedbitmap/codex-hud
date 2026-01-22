@@ -1,12 +1,12 @@
 import Foundation
 
-public struct RateLimit: Equatable {
+public struct RateLimit: Equatable, Sendable {
     public let usedPercent: Double
     public let windowMinutes: Int
     public let resetsAt: Date
 }
 
-public struct TokenCountEvent: Equatable {
+public struct TokenCountEvent: Equatable, Sendable {
     public let timestamp: Date
     public let primary: RateLimit?
     public let secondary: RateLimit?

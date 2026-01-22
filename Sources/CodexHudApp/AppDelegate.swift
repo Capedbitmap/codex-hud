@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var eventMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
             button.image = NSImage(systemSymbolName: "entry.lever.keypad", accessibilityDescription: "Codex HUD")
@@ -23,6 +24,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentViewController = hosting
         popover.behavior = .transient
         popover.animates = false
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
     }
 
     @objc private func togglePopover(_ sender: Any?) {
