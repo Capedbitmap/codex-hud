@@ -8,13 +8,13 @@ struct CodexHudApp: App {
     var body: some Scene {
         MenuBarExtra("Codex HUD", systemImage: "entry.lever.keypad") {
             MenuBarView(viewModel: viewModel)
-                .containerBackground(.ultraThinMaterial, for: .window)
+                .containerBackground(.clear, for: .window)
         }
         .menuBarExtraStyle(.window)
 
         Settings {
             SettingsView(viewModel: viewModel)
-                .containerBackground(.ultraThinMaterial, for: .window)
+                .containerBackground(.clear, for: .window)
         }
     }
 }

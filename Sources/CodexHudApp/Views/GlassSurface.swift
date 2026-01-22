@@ -3,7 +3,7 @@ import SwiftUI
 
 struct VisualEffectView: NSViewRepresentable {
     var material: NSVisualEffectView.Material
-    var blending: NSVisualEffectView.BlendingMode = .behindWindow
+    var blending: NSVisualEffectView.BlendingMode = .withinWindow
     var state: NSVisualEffectView.State = .active
 
     func makeNSView(context: Context) -> NSVisualEffectView {
@@ -43,20 +43,9 @@ struct GlassSurface: View {
 
             shape
                 .fill(Color.clear)
-                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.24 : 0.08), radius: 1, x: 0, y: 1)
-
-            LinearGradient(
-                stops: [
-                    .init(color: PremiumColors.surfaceHigh, location: 0),
-                    .init(color: PremiumColors.surfaceMid, location: 0.35),
-                    .init(color: PremiumColors.surfaceLow, location: 1)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
 
             if let tint {
-                tint.opacity(0.08).blendMode(.plusLighter)
+                tint.opacity(0.04).blendMode(.plusLighter)
             }
         }
         .clipShape(shape)
