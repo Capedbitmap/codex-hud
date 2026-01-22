@@ -106,15 +106,13 @@ private struct AccountStripItem: View {
             )
         }
         .frame(width: 70)
-        .overlay(alignment: .topLeading) {
-            if isHovering {
-                HoverTooltip(text: tooltip)
-                    .frame(width: 190, alignment: .leading)
-                    .offset(x: -10, y: -56)
-            }
-        }
         .onHover { hovering in
             isHovering = hovering
+        }
+        .popover(isPresented: $isHovering, arrowEdge: .bottom) {
+            HoverTooltip(text: tooltip)
+                .frame(width: 200, alignment: .leading)
+                .padding(6)
         }
     }
 
