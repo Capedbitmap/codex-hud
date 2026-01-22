@@ -20,6 +20,7 @@ struct MenuBarView: View {
 
             FooterActionsView(
                 refreshAction: { viewModel.refreshFromLogs() },
+                settingsAction: { SettingsWindowController.shared.show(viewModel: viewModel) },
                 quitAction: { NSApp.terminate(nil) }
             )
         }
@@ -79,16 +80,15 @@ private struct HeaderView: View {
 
 private struct FooterActionsView: View {
     let refreshAction: () -> Void
+    let settingsAction: () -> Void
     let quitAction: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
             Button("Refresh Now", action: refreshAction)
                 .buttonStyle(.borderedProminent)
-            SettingsLink {
-                Text("Settings")
-            }
-            .buttonStyle(.bordered)
+            Button("Settings", action: settingsAction)
+                .buttonStyle(.bordered)
             Spacer()
             Button("Quit", action: quitAction)
                 .buttonStyle(.borderless)
