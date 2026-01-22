@@ -48,6 +48,16 @@ final class RecommendationEngineTests: XCTestCase {
         XCTAssertEqual(decision.reason, .noData)
     }
 
+    func testPrioritizeOrdersByStickinessThenReset() {
+        let active = makeAccount(email: "a@example.com", codex: 2, weeklyUsed: 20, resetOffset: 60 * 60 * 6)
+        let soonest = makeAccount(email: "b@example.com", codex: 3, weeklyUsed: 20, resetOffset: 60 * 60)
+        let later = makeAccount(email: "c@example.com", codex: 4, weeklyUsed: 20, resetOffset: 60 * 60 * 12)
+        let unknown = AccountRecord(codexNumber: 5, email: "d@example.com", displayName: nil, lastSnapshot: nil, lastUpdated: nil)
+        let engine = RecommendationEngine()
+        let ordered = engine.prioritize(accounts: [later, active, unknown, soonest], activeEmail: active.email)
+        XCTAssertEqual(ordered.map(\.email), [active.email, soonest.email, later.email, unknown.email])
+    }
+
     private func makeAccount(email: String, codex: Int, weeklyUsed: Double, resetOffset: TimeInterval) -> AccountRecord {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let resetDate = now.addingTimeInterval(resetOffset)

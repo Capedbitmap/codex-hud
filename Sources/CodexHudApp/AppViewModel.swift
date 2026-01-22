@@ -18,7 +18,9 @@ final class AppViewModel: ObservableObject {
     private let refreshInterval: TimeInterval
     private var refreshTimer: Timer?
     private var authWatcher: AuthFileWatcher?
+    private var logWatcher: SessionLogWatcher?
     private var lastAuthRefresh: Date?
+    private var lastLogRefresh: Date?
     private var authChangeCutoff: Date?
 
     init(
@@ -41,6 +43,7 @@ final class AppViewModel: ObservableObject {
         applyAssumedResets()
         startAutoRefresh()
         startAuthWatcher()
+        startLogWatcher()
     }
 
     var activeAccount: AccountRecord? {
@@ -50,6 +53,10 @@ final class AppViewModel: ObservableObject {
 
     var recommendation: RecommendationDecision {
         RecommendationEngine().recommend(accounts: state.accounts, activeEmail: state.activeEmail)
+    }
+
+    var priorityList: [AccountRecord] {
+        RecommendationEngine().prioritize(accounts: state.accounts, activeEmail: state.activeEmail)
     }
 
     var weeklyRemainingPercent: Percent? {
@@ -181,12 +188,32 @@ final class AppViewModel: ObservableObject {
         authWatcher?.start()
     }
 
+    private func startLogWatcher() {
+        logWatcher?.stop()
+        logWatcher = SessionLogWatcher(logsURL: defaultLogsURL()) { [weak self] in
+            guard let self else { return }
+            Task { @MainActor in
+                self.handleLogChange()
+            }
+        }
+        logWatcher?.start()
+    }
+
     private func handleAuthChange() {
         let now = Date()
         if let last = lastAuthRefresh, now.timeIntervalSince(last) < 2 {
             return
         }
         lastAuthRefresh = now
+        refreshFromLogs()
+    }
+
+    private func handleLogChange() {
+        let now = Date()
+        if let last = lastLogRefresh, now.timeIntervalSince(last) < 60 {
+            return
+        }
+        lastLogRefresh = now
         refreshFromLogs()
     }
 
