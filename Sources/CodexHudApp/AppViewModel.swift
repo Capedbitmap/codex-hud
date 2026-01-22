@@ -224,7 +224,7 @@ final class AppViewModel: ObservableObject {
 
     private func handleLogChange() {
         let now = Date()
-        if let last = lastLogRefresh, now.timeIntervalSince(last) < 60 {
+        if let last = lastLogRefresh, now.timeIntervalSince(last) < 5 {
             return
         }
         lastLogRefresh = now
