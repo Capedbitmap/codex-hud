@@ -24,11 +24,13 @@ struct AccountsListView: View {
                                 account: account,
                                 status: status,
                                 remainingPercent: remainingPercent(status),
-                                isActive: account.email == viewModel.state.activeEmail
+                                isActive: account.email == viewModel.state.activeEmail,
+                                tooltip: tooltip(for: account, status: status)
                             )
                         }
                     }
                     .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
@@ -44,6 +46,36 @@ struct AccountsListView: View {
             return nil
         }
     }
+
+    private func tooltip(for account: AccountRecord, status: AccountStatus) -> String {
+        var lines: [String] = []
+        switch status {
+        case .available(let state), .depleted(let state):
+            lines.append("Weekly resets: \(formatDate(state.resetsAt)) (\(countdownString(to: state.resetsAt)))")
+        case .unknown:
+            lines.append("Weekly resets: no data")
+        }
+        if account.email == viewModel.state.activeEmail, let fiveHour = account.lastSnapshot?.fiveHour {
+            lines.append("5-hour resets: \(formatDate(fiveHour.resetsAt)) (\(countdownString(to: fiveHour.resetsAt)))")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
+    private func countdownString(to date: Date) -> String {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.day, .hour, .minute]
+        formatter.unitsStyle = .abbreviated
+        formatter.maximumUnitCount = 2
+        formatter.zeroFormattingBehavior = .dropAll
+        return formatter.string(from: Date(), to: date) ?? "soon"
+    }
 }
 
 private struct AccountStripItem: View {
@@ -51,6 +83,7 @@ private struct AccountStripItem: View {
     let status: AccountStatus
     let remainingPercent: Double?
     let isActive: Bool
+    let tooltip: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -72,6 +105,7 @@ private struct AccountStripItem: View {
             )
         }
         .frame(width: 70)
+        .help(tooltip)
     }
 
     private var statusColor: Color {
