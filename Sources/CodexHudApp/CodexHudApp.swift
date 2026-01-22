@@ -3,18 +3,11 @@ import CodexHudCore
 
 @main
 struct CodexHudApp: App {
-    @StateObject private var viewModel = AppViewModel()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        MenuBarExtra("Codex HUD", systemImage: "entry.lever.keypad") {
-            MenuBarView(viewModel: viewModel)
-                .containerBackground(.clear, for: .window)
-        }
-        .menuBarExtraStyle(.window)
-
         Settings {
-            SettingsView(viewModel: viewModel)
-                .containerBackground(.clear, for: .window)
+            SettingsView(viewModel: appDelegate.viewModel)
         }
     }
 }

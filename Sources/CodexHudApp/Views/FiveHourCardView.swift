@@ -7,6 +7,8 @@ struct FiveHourCardView: View {
     var body: some View {
         let fiveHour = viewModel.activeAccount?.lastSnapshot?.fiveHour
         let remainingPercent = fiveHour.map { max(0, min(100, 100 - $0.usedPercent)) }
+        let level = fiveHourLevel(remainingPercent)
+        let color = Theme.color(for: level)
 
         VStack(alignment: .leading, spacing: 8) {
             Label("5-Hour", systemImage: "timer")
@@ -14,22 +16,22 @@ struct FiveHourCardView: View {
                 .foregroundStyle(Theme.secondary)
 
             if let remainingPercent {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("\(Int(remainingPercent))% remaining")
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("\(Int(remainingPercent))% remaining")
                         .font(Typography.metric)
-                        .foregroundStyle(Theme.accent)
+                        .foregroundStyle(color)
                         .monospacedDigit()
 
-                    Capsule()
-                        .fill(Color.white.opacity(0.12))
-                        .frame(height: 6)
-                        .overlay {
-                            GeometryReader { proxy in
-                                Capsule()
-                                    .fill(Theme.accent)
-                                    .frame(width: max(6, proxy.size.width * CGFloat(remainingPercent / 100)), height: 6)
+                        Capsule()
+                            .fill(Color.white.opacity(0.12))
+                            .frame(height: 6)
+                            .overlay {
+                                GeometryReader { proxy in
+                                    Capsule()
+                                        .fill(color)
+                                        .frame(width: max(6, proxy.size.width * CGFloat(remainingPercent / 100)), height: 6)
+                                }
                             }
-                        }
                 }
             } else {
                 Text("No data")
@@ -38,9 +40,11 @@ struct FiveHourCardView: View {
             }
 
             if let fiveHour {
+                let details = resetDetails("5-hour", date: fiveHour.resetsAt)
                 Text("Resets \(formatDate(fiveHour.resetsAt))")
                     .font(Typography.meta)
                     .foregroundStyle(Theme.muted)
+                    .help(details)
             }
         }
     }
@@ -50,5 +54,27 @@ struct FiveHourCardView: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+
+    private func fiveHourLevel(_ remaining: Double?) -> ThresholdLevel {
+        guard let remaining,
+              let percent = Percent(rawValue: remaining) else { return .normal }
+        if percent <= UsageThresholds.default.depleted { return .critical }
+        if percent <= UsageThresholds.default.warning { return .warning }
+        return .normal
+    }
+
+    private func resetDetails(_ label: String, date: Date) -> String {
+        let countdown = countdownString(to: date)
+        return "\(label.capitalized) resets: \(formatDate(date)) (\(countdown))"
+    }
+
+    private func countdownString(to date: Date) -> String {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.day, .hour, .minute]
+        formatter.unitsStyle = .abbreviated
+        formatter.maximumUnitCount = 2
+        formatter.zeroFormattingBehavior = .dropAll
+        return formatter.string(from: Date(), to: date) ?? "soon"
     }
 }

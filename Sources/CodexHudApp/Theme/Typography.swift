@@ -6,7 +6,7 @@ enum Typography {
 
     static let cardTitle = Font.system(size: 13, weight: .semibold, design: .default)
     static let cardValue = Font.system(size: 20, weight: .semibold, design: .default)
-    static let metric = Font.system(size: 32, weight: .semibold, design: .default)
+    static let metric = Font.system(size: 30, weight: .medium, design: .default)
 
     static let label = Font.system(size: 12, weight: .medium, design: .default)
     static let meta = Font.system(size: 11, weight: .medium, design: .monospaced)

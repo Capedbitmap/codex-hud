@@ -29,9 +29,11 @@ struct WeeklyCardView: View {
 
                     VStack(alignment: .leading, spacing: 6) {
                         if let weekly {
+                            let details = resetDetails("weekly", date: weekly.resetsAt)
                             Text("Resets \(formatDate(weekly.resetsAt))")
                                 .font(Typography.meta)
                                 .foregroundStyle(Theme.muted)
+                                .help(details)
                             if weekly.isStale {
                                 Text("Stale until refreshed")
                                     .font(Typography.caption)
@@ -61,5 +63,19 @@ struct WeeklyCardView: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+
+    private func resetDetails(_ label: String, date: Date) -> String {
+        let countdown = countdownString(to: date)
+        return "\(label.capitalized) resets: \(formatDate(date)) (\(countdown))"
+    }
+
+    private func countdownString(to date: Date) -> String {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.day, .hour, .minute]
+        formatter.unitsStyle = .abbreviated
+        formatter.maximumUnitCount = 2
+        formatter.zeroFormattingBehavior = .dropAll
+        return formatter.string(from: Date(), to: date) ?? "soon"
     }
 }
