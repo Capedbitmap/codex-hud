@@ -3,6 +3,7 @@ import CodexHudCore
 
 struct MenuBarView: View {
     @ObservedObject var viewModel: AppViewModel
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -20,7 +21,7 @@ struct MenuBarView: View {
 
             FooterActionsView(
                 refreshAction: { viewModel.refreshFromLogs() },
-                settingsAction: { SettingsWindowController.shared.show(viewModel: viewModel) },
+                settingsAction: { openSettings() },
                 quitAction: { NSApp.terminate(nil) }
             )
         }
