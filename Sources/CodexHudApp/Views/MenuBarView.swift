@@ -5,6 +5,7 @@ struct MenuBarView: View {
     @ObservedObject var viewModel: AppViewModel
 
     var body: some View {
+        let width = popoverWidth
         VStack(alignment: .leading, spacing: 12) {
             HeaderView(viewModel: viewModel)
             AccountsListView(viewModel: viewModel)
@@ -32,7 +33,17 @@ struct MenuBarView: View {
         .background(
             GlassSurface(cornerRadius: 26, material: .popover, elevation: .standard, tint: nil, animateHighlight: false)
         )
-        .frame(width: 520)
+        .frame(width: width)
+    }
+
+    private var popoverWidth: CGFloat {
+        let accountCount = max(1, viewModel.state.accounts.count)
+        let accountWidth: CGFloat = 70
+        let spacing: CGFloat = 12
+        let horizontalPadding: CGFloat = 36
+        let rowWidth = (CGFloat(accountCount) * accountWidth) + (CGFloat(max(0, accountCount - 1)) * spacing)
+        let ideal = rowWidth + horizontalPadding
+        return min(480, max(420, ideal))
     }
 }
 
