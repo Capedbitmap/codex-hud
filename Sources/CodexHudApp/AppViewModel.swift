@@ -15,9 +15,15 @@ final class AppViewModel: ObservableObject {
     private let notificationManager = NotificationManager()
     private let forcedRefreshEvaluator = ForcedRefreshEvaluator()
     private let helloSender: HelloSending
+    private let refreshInterval: TimeInterval
+    private var refreshTimer: Timer?
 
-    init(helloSender: HelloSending = CodexHelloSender()) {
+    init(
+        helloSender: HelloSending = CodexHelloSender(),
+        refreshInterval: TimeInterval = AppViewModel.defaultRefreshInterval
+    ) {
         self.helloSender = helloSender
+        self.refreshInterval = refreshInterval
         do {
             store = try AppStateStore.defaultStore()
         } catch {
@@ -30,6 +36,7 @@ final class AppViewModel: ObservableObject {
         }
         refreshActiveEmail()
         applyAssumedResets()
+        startAutoRefresh()
     }
 
     var activeAccount: AccountRecord? {
@@ -130,6 +137,18 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    private func startAutoRefresh() {
+        refreshTimer?.invalidate()
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                self.refreshFromLogs()
+            }
+        }
+        refreshTimer?.tolerance = refreshInterval * 0.1
+        refreshFromLogs()
+    }
+
     private func applyAssumedResets() {
         guard let activeIndex = state.activeEmail.flatMap({ email in
             state.accounts.firstIndex(where: { $0.email == email })
@@ -196,6 +215,7 @@ final class AppViewModel: ObservableObject {
     private func defaultAuthURL() -> URL {
         URL(fileURLWithPath: "~/.codex/auth.json").expandingTildeInPath
     }
+
 }
 
 private extension URL {
@@ -203,4 +223,8 @@ private extension URL {
         let path = (self.path as NSString).expandingTildeInPath
         return URL(fileURLWithPath: path)
     }
+}
+
+private extension AppViewModel {
+    static let defaultRefreshInterval: TimeInterval = 300
 }
