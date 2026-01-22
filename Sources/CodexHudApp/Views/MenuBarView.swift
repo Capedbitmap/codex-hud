@@ -32,7 +32,7 @@ struct MenuBarView: View {
         .background(
             GlassSurface(cornerRadius: 26, material: .popover, elevation: .standard, tint: nil, animateHighlight: false)
         )
-        .frame(width: 460)
+        .frame(width: 520)
     }
 }
 
