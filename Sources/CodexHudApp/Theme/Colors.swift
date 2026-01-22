@@ -11,7 +11,7 @@ enum PremiumColors {
     static let critical = Color(hue: 0.98, saturation: 0.68, brightness: 0.78)
     static let criticalGlow = Color(hue: 0.98, saturation: 0.55, brightness: 0.95)
 
-    static let surfaceHigh = Color.white.opacity(0.04)
-    static let surfaceMid = Color.white.opacity(0.02)
-    static let surfaceLow = Color.black.opacity(0.01)
+    static let surfaceHigh = Color.white.opacity(0.015)
+    static let surfaceMid = Color.white.opacity(0.008)
+    static let surfaceLow = Color.black.opacity(0.005)
 }

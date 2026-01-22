@@ -35,8 +35,6 @@ struct GlassSurface: View {
     var animateHighlight: Bool = false
 
     @Environment(\.colorScheme) private var colorScheme
-    @State private var highlightPhase: CGFloat = 0
-
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
 
@@ -46,10 +44,6 @@ struct GlassSurface: View {
             shape
                 .fill(Color.clear)
                 .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.24 : 0.08), radius: 1, x: 0, y: 1)
-
-            GlassEdgeHighlight(phase: animateHighlight ? highlightPhase : 0.5)
-                .opacity(0.15)
-                .blendMode(.screen)
 
             LinearGradient(
                 stops: [
@@ -72,64 +66,6 @@ struct GlassSurface: View {
                 shape.strokeBorder(Theme.glassStroke, lineWidth: 1)
             }
         )
-        .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowOffsetY)
-        .onAppear {
-            guard animateHighlight else { return }
-            withAnimation(.easeInOut(duration: 10).repeatForever(autoreverses: true)) {
-                highlightPhase = 1
-            }
-        }
-    }
-
-    private var shadowColor: Color {
-        switch elevation {
-        case .inset:
-            return Color.black.opacity(0.1)
-        case .standard:
-            return Color.black.opacity(0.18)
-        case .raised:
-            return Color.black.opacity(0.28)
-        }
-    }
-
-    private var shadowRadius: CGFloat {
-        switch elevation {
-        case .inset:
-            return 6
-        case .standard:
-            return 12
-        case .raised:
-            return 18
-        }
-    }
-
-    private var shadowOffsetY: CGFloat {
-        switch elevation {
-        case .inset:
-            return 2
-        case .standard:
-            return 6
-        case .raised:
-            return 10
-        }
-    }
-}
-
-private struct GlassEdgeHighlight: View {
-    var phase: CGFloat
-
-    var body: some View {
-        GeometryReader { proxy in
-            let size = proxy.size
-            let xOffset = (phase - 0.5) * size.width * 0.4
-
-            LinearGradient(
-                colors: [Color.white.opacity(0.45), Color.clear],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .frame(width: size.width * 0.8, height: size.height * 0.6)
-            .offset(x: xOffset, y: -size.height * 0.2)
-        }
+        .onAppear { }
     }
 }

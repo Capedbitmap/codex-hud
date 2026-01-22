@@ -22,7 +22,7 @@ struct PremiumCircularGauge: View {
 
             VStack(spacing: 2) {
                 Text("\(Int(progress))")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .font(Typography.metric)
                     .monospacedDigit()
                     .foregroundStyle(Theme.color(for: level))
                 Text("%")

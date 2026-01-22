@@ -14,9 +14,9 @@ struct FiveHourCardView: View {
                 .foregroundStyle(Theme.secondary)
 
             if let remainingPercent {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("\(Int(remainingPercent))% remaining")
-                        .font(Typography.cardValue)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("\(Int(remainingPercent))% remaining")
+                        .font(Typography.metric)
                         .foregroundStyle(Theme.accent)
                         .monospacedDigit()
 
