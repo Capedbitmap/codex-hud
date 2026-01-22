@@ -128,7 +128,7 @@ private struct AccountStripItem: View {
                 height: 3
             )
         }
-        .frame(width: 70)
+        .frame(width: 82)
         .padding(.vertical, 6)
         .padding(.horizontal, 6)
         .contentShape(Rectangle())
@@ -182,6 +182,7 @@ private struct AccountMetricRow: View {
                 .font(.system(size: 8, weight: .regular))
                 .foregroundStyle(Theme.muted)
             AccountProgressBar(percent: percent, color: color, height: height)
+                .frame(maxWidth: .infinity)
         }
     }
 }
