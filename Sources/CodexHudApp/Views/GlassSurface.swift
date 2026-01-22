@@ -22,10 +22,20 @@ struct VisualEffectView: NSViewRepresentable {
 }
 
 struct GlassSurface: View {
+    enum Elevation {
+        case inset
+        case standard
+        case raised
+    }
+
     var cornerRadius: CGFloat
-    var material: NSVisualEffectView.Material
-    var highlightOpacity: Double = 0.35
-    var strokeOpacity: Double = 0.5
+    var material: NSVisualEffectView.Material = .hudWindow
+    var elevation: Elevation = .standard
+    var tint: Color? = nil
+    var animateHighlight: Bool = true
+
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var highlightPhase: CGFloat = 0
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -33,47 +43,93 @@ struct GlassSurface: View {
         ZStack {
             VisualEffectView(material: material)
 
+            shape
+                .fill(Color.clear)
+                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.24 : 0.08), radius: 1, x: 0, y: 1)
+
+            GlassEdgeHighlight(phase: highlightPhase)
+                .opacity(animateHighlight ? 0.55 : 0.35)
+                .blendMode(.screen)
+
             LinearGradient(
-                colors: [Color.white.opacity(0.12), Color.clear, Color.black.opacity(0.08)],
+                stops: [
+                    .init(color: PremiumColors.surfaceHigh, location: 0),
+                    .init(color: PremiumColors.surfaceMid, location: 0.35),
+                    .init(color: PremiumColors.surfaceLow, location: 1)
+                ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            .opacity(0.35)
 
-            GlassHighlight()
-                .opacity(highlightOpacity)
-                .blendMode(.screen)
+            if let tint {
+                tint.opacity(0.08).blendMode(.plusLighter)
+            }
         }
         .clipShape(shape)
         .overlay(
-            shape.stroke(Theme.glassStroke, lineWidth: 1)
-                .opacity(strokeOpacity)
+            ZStack {
+                shape.stroke(Color.white.opacity(0.25), lineWidth: 0.5)
+                shape.strokeBorder(Theme.glassStroke, lineWidth: 1)
+            }
         )
+        .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowOffsetY)
+        .onAppear {
+            guard animateHighlight else { return }
+            withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
+                highlightPhase = 1
+            }
+        }
+    }
+
+    private var shadowColor: Color {
+        switch elevation {
+        case .inset:
+            return Color.black.opacity(0.1)
+        case .standard:
+            return Color.black.opacity(0.18)
+        case .raised:
+            return Color.black.opacity(0.28)
+        }
+    }
+
+    private var shadowRadius: CGFloat {
+        switch elevation {
+        case .inset:
+            return 6
+        case .standard:
+            return 12
+        case .raised:
+            return 18
+        }
+    }
+
+    private var shadowOffsetY: CGFloat {
+        switch elevation {
+        case .inset:
+            return 2
+        case .standard:
+            return 6
+        case .raised:
+            return 10
+        }
     }
 }
 
-private struct GlassHighlight: View {
+private struct GlassEdgeHighlight: View {
+    var phase: CGFloat
+
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
+            let xOffset = (phase - 0.5) * size.width * 0.4
 
-            ZStack {
-                RadialGradient(
-                    colors: [Color.white.opacity(0.4), Color.clear],
-                    center: .topLeading,
-                    startRadius: 0,
-                    endRadius: max(size.width, size.height) * 0.6
-                )
-                .offset(x: -size.width * 0.15, y: -size.height * 0.2)
-
-                LinearGradient(
-                    colors: [Color.white.opacity(0.25), Color.clear],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: size.height * 0.25)
-                .offset(y: -size.height * 0.35)
-            }
+            LinearGradient(
+                colors: [Color.white.opacity(0.45), Color.clear],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .frame(width: size.width * 0.8, height: size.height * 0.6)
+            .offset(x: xOffset, y: -size.height * 0.2)
         }
     }
 }

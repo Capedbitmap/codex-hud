@@ -13,12 +13,12 @@ struct AccountsListView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Accounts")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(Typography.cardTitle)
                     .foregroundStyle(Theme.secondary)
 
                 if viewModel.state.accounts.isEmpty {
                     Text("Configure accounts in Settings")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(Typography.label)
                         .foregroundStyle(Theme.muted)
                 } else {
                     LazyVGrid(columns: columns, spacing: 10) {
@@ -27,7 +27,8 @@ struct AccountsListView: View {
                                 account: account,
                                 status: evaluator.status(for: account),
                                 gradient: statusGradient(evaluator.status(for: account)),
-                                label: statusLabel(evaluator.status(for: account))
+                                label: statusLabel(evaluator.status(for: account)),
+                                isActive: account.email == viewModel.state.activeEmail
                             )
                         }
                     }
@@ -64,24 +65,47 @@ private struct AccountChip: View {
     let status: AccountStatus
     let gradient: LinearGradient
     let label: String
+    let isActive: Bool
 
     var body: some View {
         HStack(spacing: 8) {
-            Circle()
-                .fill(gradient)
-                .frame(width: 8, height: 8)
+            ZStack {
+                Circle()
+                    .fill(gradient)
+                    .frame(width: 10, height: 10)
+                if case .available = status {
+                    Circle()
+                        .fill(gradient)
+                        .frame(width: 10, height: 10)
+                        .blur(radius: 4)
+                }
+            }
             VStack(alignment: .leading, spacing: 2) {
-                Text("C\(account.codexNumber)")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                HStack(spacing: 4) {
+                    Text("C\(account.codexNumber)")
+                        .font(Typography.chip)
+                        .foregroundStyle(isActive ? Color.primary : Theme.secondary)
+                    if isActive {
+                        Text("ACTIVE")
+                            .font(.system(size: 8, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule().fill(Theme.readyGradient)
+                            )
+                    }
+                }
                 Text(label)
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(Theme.secondary)
+                    .font(Typography.caption)
+                    .foregroundStyle(Theme.muted)
             }
             Spacer()
         }
         .padding(8)
         .background(
-            GlassSurface(cornerRadius: 12, material: .hudWindow, highlightOpacity: 0.25, strokeOpacity: 0.4)
+            GlassSurface(cornerRadius: 12, material: .hudWindow, elevation: isActive ? .raised : .inset, tint: isActive ? Theme.accentTint : nil, animateHighlight: false)
         )
+        .animation(AppAnimations.snappy, value: isActive)
     }
 }

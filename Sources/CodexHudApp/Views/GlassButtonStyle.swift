@@ -9,8 +9,9 @@ struct GlassButtonStyle: ButtonStyle {
                 GlassSurface(
                     cornerRadius: 10,
                     material: .hudWindow,
-                    highlightOpacity: configuration.isPressed ? 0.15 : 0.25,
-                    strokeOpacity: 0.4
+                    elevation: configuration.isPressed ? .inset : .raised,
+                    tint: nil,
+                    animateHighlight: false
                 )
             )
             .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
