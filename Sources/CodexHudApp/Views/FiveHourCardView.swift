@@ -6,7 +6,7 @@ struct FiveHourCardView: View {
 
     var body: some View {
         let fiveHour = viewModel.activeAccount?.lastSnapshot?.fiveHour
-        let usedPercent = fiveHour?.usedPercent
+        let remainingPercent = fiveHour.map { max(0, min(100, 100 - $0.usedPercent)) }
 
         GlassCard {
             VStack(alignment: .leading, spacing: 8) {
@@ -14,9 +14,9 @@ struct FiveHourCardView: View {
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.secondary)
 
-                if let usedPercent {
+                if let remainingPercent {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("\(Int(usedPercent))% used")
+                        Text("\(Int(remainingPercent))% remaining")
                             .font(.system(size: 18, weight: .bold, design: .rounded))
                             .foregroundStyle(Theme.readyGradient)
                             .monospacedDigit()
@@ -24,10 +24,12 @@ struct FiveHourCardView: View {
                         Capsule()
                             .fill(Color.white.opacity(0.12))
                             .frame(height: 6)
-                            .overlay(alignment: .leading) {
-                                Capsule()
-                                    .fill(Theme.readyGradient)
-                                    .frame(width: max(6, 2.4 * CGFloat(usedPercent)), height: 6)
+                            .overlay {
+                                GeometryReader { proxy in
+                                    Capsule()
+                                        .fill(Theme.readyGradient)
+                                        .frame(width: max(6, proxy.size.width * CGFloat(remainingPercent / 100)), height: 6)
+                                }
                             }
                     }
                 } else {
