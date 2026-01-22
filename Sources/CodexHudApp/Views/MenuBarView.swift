@@ -39,11 +39,11 @@ struct MenuBarView: View {
     private var popoverWidth: CGFloat {
         let accountCount = max(1, viewModel.state.accounts.count)
         let accountWidth: CGFloat = 82
-        let spacing: CGFloat = 12
+        let spacing: CGFloat = 10
         let horizontalPadding: CGFloat = 36
         let rowWidth = (CGFloat(accountCount) * accountWidth) + (CGFloat(max(0, accountCount - 1)) * spacing)
         let ideal = rowWidth + horizontalPadding
-        return min(520, max(440, ideal))
+        return min(500, max(420, ideal))
     }
 }
 
