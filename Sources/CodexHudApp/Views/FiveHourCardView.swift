@@ -11,13 +11,13 @@ struct FiveHourCardView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 8) {
                 Label("5-Hour", systemImage: "timer")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(Typography.cardTitle)
                     .foregroundStyle(Theme.secondary)
 
                 if let remainingPercent {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("\(Int(remainingPercent))% remaining")
-                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .font(Typography.cardValue)
                             .foregroundStyle(Theme.readyGradient)
                             .monospacedDigit()
 
@@ -34,13 +34,13 @@ struct FiveHourCardView: View {
                     }
                 } else {
                     Text("No data")
-                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .font(Typography.cardValue)
                         .foregroundStyle(Theme.secondary)
                 }
 
                 if let fiveHour {
                     Text("Resets \(formatDate(fiveHour.resetsAt))")
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .font(Typography.meta)
                         .foregroundStyle(Theme.muted)
                 }
             }

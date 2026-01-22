@@ -9,27 +9,28 @@ struct RecommendationView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Recommended Next", systemImage: "sparkle")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(Typography.cardTitle)
                     .foregroundStyle(Theme.secondary)
+                    .symbolEffect(.pulse, options: .repeating)
 
                 if let account = decision.recommended {
                     HStack {
                         Text("Codex \(account.codexNumber)")
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .font(Typography.cardValue)
                             .foregroundStyle(Theme.readyGradient)
                         Spacer()
                         Text(reasonLabel(decision.reason))
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .font(Typography.caption)
                             .foregroundStyle(Theme.muted)
                     }
                     Text(account.email)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(Typography.label)
                         .foregroundStyle(Theme.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 } else {
                     Text("No recommendation")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .font(Typography.cardValue)
                         .foregroundStyle(Theme.secondary)
                 }
             }

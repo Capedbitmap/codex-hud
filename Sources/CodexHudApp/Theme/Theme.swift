@@ -2,36 +2,30 @@ import SwiftUI
 import CodexHudCore
 
 enum Theme {
-    static let background = LinearGradient(
-        colors: [Color.white.opacity(0.18), Color.clear],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
-
     static let glassStroke = LinearGradient(
-        colors: [Color.white.opacity(0.65), Color.white.opacity(0.05)],
+        colors: [Color.white.opacity(0.65), Color.white.opacity(0.08)],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
-    static let glassShadow = Color.black.opacity(0.18)
-    static let muted = Color.secondary.opacity(0.7)
-    static let secondary = Color.secondary
+    static let glassShadow = Color.black.opacity(0.2)
+    static let muted = Color.primary.opacity(0.5)
+    static let secondary = Color.primary.opacity(0.65)
 
     static let readyGradient = LinearGradient(
-        colors: [Color.mint, Color.teal],
+        colors: [PremiumColors.accent, PremiumColors.accentLight],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
     static let warningGradient = LinearGradient(
-        colors: [Color.orange, Color.yellow],
+        colors: [PremiumColors.warning, PremiumColors.warningLight],
         startPoint: .top,
         endPoint: .bottom
     )
 
     static let criticalGradient = LinearGradient(
-        colors: [Color.red, Color.pink],
+        colors: [PremiumColors.critical, PremiumColors.criticalGlow],
         startPoint: .top,
         endPoint: .bottom
     )
@@ -50,11 +44,13 @@ enum Theme {
     static func glow(for level: ThresholdLevel) -> Color {
         switch level {
         case .normal:
-            return Color.mint
+            return PremiumColors.accentGlow
         case .warning:
-            return Color.orange
+            return PremiumColors.warning
         case .critical:
-            return Color.red
+            return PremiumColors.criticalGlow
         }
     }
+
+    static let accentTint = PremiumColors.accent
 }

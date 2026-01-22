@@ -9,7 +9,7 @@ struct SettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Accounts")
-                .font(.system(size: 18, weight: .semibold, design: .rounded))
+                .font(Typography.heroMedium)
 
             GlassCard {
                 VStack(spacing: 10) {
@@ -17,11 +17,9 @@ struct SettingsView: View {
                         HStack(spacing: 12) {
                             Text("Codex \(draft.codexNumber)")
                                 .frame(width: 70, alignment: .leading)
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            TextField("Email", text: $draft.email)
-                                .textFieldStyle(.roundedBorder)
-                            TextField("Display name", text: $draft.displayName)
-                                .textFieldStyle(.roundedBorder)
+                                .font(Typography.label)
+                            GlassTextField(placeholder: "Email", text: $draft.email)
+                            GlassTextField(placeholder: "Display name", text: $draft.displayName)
                         }
                     }
                 }
@@ -36,7 +34,7 @@ struct SettingsView: View {
 
                 if let message {
                     Text(message)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .font(Typography.label)
                         .foregroundStyle(Theme.secondary)
                 }
 
@@ -47,20 +45,20 @@ struct SettingsView: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Diagnostics")
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .font(Typography.cardTitle)
                 if let path = viewModel.storagePath() {
                     Text("Storage: \(path)")
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(Typography.meta)
                         .foregroundStyle(Theme.muted)
                 }
                 if let lastRefresh = viewModel.state.lastRefresh {
                     Text("Last refresh: \(formatDate(lastRefresh))")
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(Typography.meta)
                         .foregroundStyle(Theme.muted)
                 }
                 if let source = viewModel.lastRefreshSource {
                     Text("Last source: \(source.rawValue)")
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(Typography.meta)
                         .foregroundStyle(Theme.muted)
                 }
             }
@@ -68,7 +66,7 @@ struct SettingsView: View {
         .padding(20)
         .frame(minWidth: 620)
         .background(
-            GlassSurface(cornerRadius: 24, material: .popover, highlightOpacity: 0.5, strokeOpacity: 0.6)
+            GlassSurface(cornerRadius: 24, material: .popover, elevation: .raised, tint: nil, animateHighlight: true)
         )
         .onAppear { loadDrafts() }
     }
