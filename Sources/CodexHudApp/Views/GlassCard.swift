@@ -15,7 +15,6 @@ struct GlassCard<Content: View>: View {
             .background(
                 GlassSurface(cornerRadius: 18, material: .hudWindow, elevation: .standard, tint: nil, animateHighlight: false)
             )
-            .shadow(color: Theme.glassShadow, radius: 14, x: 0, y: 8)
             .scaleEffect(isHovering ? 1.01 : 1.0)
             .onHover { hovering in
                 withAnimation(AppAnimations.snappy) {

@@ -30,10 +30,9 @@ struct MenuBarView: View {
         }
         .padding(18)
         .background(
-            GlassSurface(cornerRadius: 26, material: .underWindowBackground, elevation: .standard, tint: nil, animateHighlight: false)
-                .shadow(color: Theme.glassShadow, radius: 14, x: 0, y: 8)
+            GlassSurface(cornerRadius: 26, material: .hudWindow, elevation: .standard, tint: nil, animateHighlight: false)
         )
-        .frame(width: 420)
+        .frame(width: 460)
     }
 }
 

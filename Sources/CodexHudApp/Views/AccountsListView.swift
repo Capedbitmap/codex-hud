@@ -71,7 +71,7 @@ private struct AccountStripItem: View {
                 color: statusColor
             )
         }
-        .frame(width: 84)
+        .frame(width: 70)
     }
 
     private var statusColor: Color {
@@ -92,15 +92,15 @@ private struct AccountProgressBar: View {
 
     var body: some View {
         Capsule()
-            .fill(Color.white.opacity(0.12))
-            .frame(height: 4)
+            .fill(Color.white.opacity(0.2))
+            .frame(height: 5)
             .overlay(alignment: .leading) {
                 GeometryReader { proxy in
                     Capsule()
                         .fill(color)
                         .frame(
-                            width: max(4, proxy.size.width * CGFloat((percent ?? 0) / 100)),
-                            height: 4
+                            width: max(6, proxy.size.width * CGFloat((percent ?? 0) / 100)),
+                            height: 5
                         )
                 }
             }
