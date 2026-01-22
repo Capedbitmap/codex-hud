@@ -84,6 +84,7 @@ private struct AccountStripItem: View {
     let remainingPercent: Double?
     let isActive: Bool
     let tooltip: String
+    @State private var isHovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -105,7 +106,16 @@ private struct AccountStripItem: View {
             )
         }
         .frame(width: 70)
-        .help(tooltip)
+        .overlay(alignment: .topLeading) {
+            if isHovering {
+                HoverTooltip(text: tooltip)
+                    .frame(width: 190, alignment: .leading)
+                    .offset(x: -10, y: -56)
+            }
+        }
+        .onHover { hovering in
+            isHovering = hovering
+        }
     }
 
     private var statusColor: Color {

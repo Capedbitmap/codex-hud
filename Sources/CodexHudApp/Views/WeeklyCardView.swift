@@ -30,10 +30,14 @@ struct WeeklyCardView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         if let weekly {
                             let details = resetDetails("weekly", date: weekly.resetsAt)
+                            let countdown = countdownString(to: weekly.resetsAt)
                             Text("Resets \(formatDate(weekly.resetsAt))")
                                 .font(Typography.meta)
                                 .foregroundStyle(Theme.muted)
                                 .help(details)
+                            Text("In \(countdown)")
+                                .font(Typography.caption)
+                                .foregroundStyle(Theme.muted)
                             if weekly.isStale {
                                 Text("Stale until refreshed")
                                     .font(Typography.caption)
