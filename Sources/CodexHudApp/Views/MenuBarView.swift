@@ -20,7 +20,7 @@ struct MenuBarView: View {
 
             FooterActionsView(
                 refreshAction: { viewModel.refreshFromLogs() },
-                settingsAction: { openSettingsWindow() },
+                settingsAction: { SettingsWindowController.shared.show(viewModel: viewModel) },
                 quitAction: { NSApp.terminate(nil) }
             )
         }
@@ -31,14 +31,6 @@ struct MenuBarView: View {
                 .background(.ultraThinMaterial)
         )
         .frame(width: 360)
-    }
-
-    private func openSettingsWindow() {
-        let settingsSelector = Selector(("showSettingsWindow:"))
-        if NSApp.sendAction(settingsSelector, to: nil, from: nil) {
-            return
-        }
-        _ = NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
     }
 }
 
