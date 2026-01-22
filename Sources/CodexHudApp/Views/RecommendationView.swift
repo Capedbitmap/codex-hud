@@ -26,6 +26,10 @@ struct RecommendationView: View {
                     .foregroundStyle(Theme.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                PriorityListView(
+                    accounts: viewModel.priorityList,
+                    activeEmail: viewModel.state.activeEmail
+                )
             } else {
                 Text("No recommendation")
                     .font(Typography.cardValue)
@@ -45,5 +49,50 @@ struct RecommendationView: View {
         case .noData:
             return "No data available"
         }
+    }
+}
+
+private struct PriorityListView: View {
+    let accounts: [AccountRecord]
+    let activeEmail: String?
+
+    var body: some View {
+        Group {
+            if accounts.isEmpty {
+                EmptyView()
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(Array(accounts.enumerated()), id: \.element.email) { index, account in
+                            PriorityChip(
+                                rank: index + 1,
+                                codexNumber: account.codexNumber,
+                                isActive: account.email == activeEmail
+                            )
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+}
+
+private struct PriorityChip: View {
+    let rank: Int
+    let codexNumber: Int
+    let isActive: Bool
+
+    var body: some View {
+        let label = "\(rank)·C\(codexNumber)"
+        return Text(label)
+            .font(Typography.caption)
+            .foregroundStyle(isActive ? Theme.secondary : Theme.muted)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                Capsule()
+                    .fill(Color.white.opacity(isActive ? 0.16 : 0.08))
+            )
     }
 }
