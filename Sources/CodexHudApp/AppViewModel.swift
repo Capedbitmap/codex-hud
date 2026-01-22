@@ -11,8 +11,13 @@ final class AppViewModel: ObservableObject {
     private let logParser = SessionLogParser()
     private let authDecoder = AuthDecoder()
     private let usageManager = UsageStateManager()
+    private let notificationEvaluator = NotificationEvaluator()
+    private let notificationManager = NotificationManager()
+    private let forcedRefreshEvaluator = ForcedRefreshEvaluator()
+    private let helloSender: HelloSending
 
-    init() {
+    init(helloSender: HelloSending = CodexHelloSender()) {
+        self.helloSender = helloSender
         do {
             store = try AppStateStore.defaultStore()
         } catch {
@@ -60,6 +65,7 @@ final class AppViewModel: ObservableObject {
             let event = try logParser.latestTokenCountEvent(in: defaultLogsURL())
             guard let primary = event.primary, let secondary = event.secondary else {
                 lastError = "Usage data missing in logs."
+                attemptForcedRefresh(for: identity.email, hasAuth: true)
                 persist()
                 return
             }
@@ -85,6 +91,7 @@ final class AppViewModel: ObservableObject {
             state.lastRefresh = Date()
             lastRefreshSource = snapshot.source
             persist()
+            evaluateNotifications(for: state.accounts[accountIndex])
         } catch {
             lastError = "Unable to refresh from logs."
         }
@@ -133,6 +140,44 @@ final class AppViewModel: ObservableObject {
             state.accounts[activeIndex].lastSnapshot = updated
             persist()
         }
+    }
+
+    private func evaluateNotifications(for account: AccountRecord) {
+        let previous = state.notificationLedger[account.email]
+        guard let evaluation = notificationEvaluator.evaluate(account: account, previous: previous) else { return }
+        state.notificationLedger[account.email] = evaluation.snapshot
+        persist()
+        notificationManager.send(events: evaluation.events, recommendation: recommendation)
+    }
+
+    private func attemptForcedRefresh(for email: String, hasAuth: Bool) {
+        let record = state.forcedRefreshRecords[email]
+        let decision = forcedRefreshEvaluator.decision(
+            now: Date(),
+            weeklyRemaining: weeklyRemainingPercent,
+            record: record,
+            hasAuth: hasAuth
+        )
+        guard decision.allowed else { return }
+        state.forcedRefreshRecords[email] = ForcedRefreshRecord(lastAttempt: Date(), lastSuccess: record?.lastSuccess, lastFailure: record?.lastFailure)
+        persist()
+        do {
+            try helloSender.sendHello(modelName: defaultHelloModel())
+            state.forcedRefreshRecords[email]?.lastSuccess = Date()
+            lastRefreshSource = .forcedRefresh
+            persist()
+        } catch {
+            state.forcedRefreshRecords[email]?.lastFailure = Date()
+            lastError = "Forced refresh failed."
+            persist()
+        }
+    }
+
+    private func defaultHelloModel() -> String? {
+        if let override = ProcessInfo.processInfo.environment["CODEX_HUD_HELLO_MODEL"], !override.isEmpty {
+            return override
+        }
+        return "gpt-5.2-codex-mini"
     }
 
     private func persist() {

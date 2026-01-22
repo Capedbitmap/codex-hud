@@ -1,6 +1,6 @@
 import Foundation
 
-public enum UsageWindowKind: String, Codable {
+public enum UsageWindowKind: String, Codable, Sendable {
     case fiveHour
     case weekly
 }
@@ -62,10 +62,23 @@ public struct AppState: Codable, Equatable {
     public var accounts: [AccountRecord]
     public var activeEmail: String?
     public var lastRefresh: Date?
+    public var notificationLedger: [String: ThresholdSnapshot]
+    public var forcedRefreshRecords: [String: ForcedRefreshRecord]
+    public var dailyHelloRecords: [String: DailyHelloRecord]
 
-    public init(accounts: [AccountRecord], activeEmail: String?, lastRefresh: Date?) {
+    public init(
+        accounts: [AccountRecord],
+        activeEmail: String?,
+        lastRefresh: Date?,
+        notificationLedger: [String: ThresholdSnapshot] = [:],
+        forcedRefreshRecords: [String: ForcedRefreshRecord] = [:],
+        dailyHelloRecords: [String: DailyHelloRecord] = [:]
+    ) {
         self.accounts = accounts
         self.activeEmail = activeEmail
         self.lastRefresh = lastRefresh
+        self.notificationLedger = notificationLedger
+        self.forcedRefreshRecords = forcedRefreshRecords
+        self.dailyHelloRecords = dailyHelloRecords
     }
 }
