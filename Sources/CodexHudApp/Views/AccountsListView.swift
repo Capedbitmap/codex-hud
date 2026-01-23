@@ -193,23 +193,22 @@ private struct AccountMetricRow: View {
     let trailingText: String?
 
     var body: some View {
-        ZStack(alignment: .trailing) {
+        VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 4) {
                 Image(systemName: systemImage)
                     .font(.system(size: 8, weight: .regular))
                     .foregroundStyle(Theme.muted)
-                AccountProgressBar(percent: percent, color: color, height: height)
-                    .frame(maxWidth: .infinity)
+                Spacer(minLength: 4)
+                if let trailingText {
+                    Text(trailingText)
+                        .font(Typography.meta)
+                        .foregroundStyle(Theme.muted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
             }
-            if let trailingText {
-                Text(trailingText)
-                    .font(Typography.meta)
-                    .foregroundStyle(Theme.muted)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .frame(width: 30, alignment: .trailing)
-                    .padding(.trailing, 1)
-            }
+            AccountProgressBar(percent: percent, color: color, height: height)
+                .frame(maxWidth: .infinity)
         }
     }
 }
