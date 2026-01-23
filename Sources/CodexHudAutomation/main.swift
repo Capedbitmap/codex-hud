@@ -5,6 +5,7 @@ struct AutomationRunner {
     private let authDecoder = AuthDecoder()
     private let forcedRefreshEvaluator = ForcedRefreshEvaluator()
     private let dailyHelloEvaluator = DailyHelloEvaluator()
+    private let dailyHelloPolicy = DailyHelloPolicy()
     private let helloSender: HelloSending
     private let store: AppStateStore
 
@@ -25,13 +26,20 @@ struct AutomationRunner {
             }
         }
 
-        let lastRun = state.dailyHelloRecords[identity.email]?.lastRun
-        guard dailyHelloEvaluator.shouldRun(now: now, lastRun: lastRun) else { return }
+        let record = state.dailyHelloRecords[identity.email]
+        let started = fiveHourStarted(account: account, now: now, startHour: dailyHelloPolicy.startHour)
+        let decision = dailyHelloEvaluator.decision(
+            now: now,
+            record: record,
+            policy: dailyHelloPolicy,
+            fiveHourStarted: started
+        )
+        guard case let .allowed(updatedRecord) = decision else { return }
 
-        try helloSender.sendHello(modelName: defaultHelloModel())
         var updated = state
-        updated.dailyHelloRecords[identity.email] = DailyHelloRecord(lastRun: now)
+        updated.dailyHelloRecords[identity.email] = updatedRecord
         try store.save(updated)
+        try helloSender.sendHello(modelName: defaultHelloModel(), message: "hi")
     }
 
     func runForcedRefreshIfNeeded() throws {
@@ -48,7 +56,7 @@ struct AutomationRunner {
         try store.save(updated)
 
         do {
-            try helloSender.sendHello(modelName: defaultHelloModel())
+            try helloSender.sendHello(modelName: defaultHelloModel(), message: "hi")
             updated.forcedRefreshRecords[identity.email]?.lastSuccess = Date()
             try store.save(updated)
         } catch {
@@ -63,6 +71,16 @@ struct AutomationRunner {
         return Percent(rawValue: 100 - used.value)
     }
 
+    private func fiveHourStarted(account: AccountRecord, now: Date, startHour: Int) -> Bool {
+        guard let snapshot = account.lastSnapshot else { return false }
+        let calendar = Calendar.current
+        guard let windowStart = calendar.date(bySettingHour: startHour, minute: 0, second: 0, of: now) else {
+            return false
+        }
+        guard snapshot.capturedAt >= windowStart else { return false }
+        return snapshot.fiveHour.usedPercent > 0
+    }
+
     private func defaultAuthURL() -> URL {
         URL(fileURLWithPath: "~/.codex/auth.json").expandingTildeInPath
     }
@@ -71,7 +89,7 @@ struct AutomationRunner {
         if let override = ProcessInfo.processInfo.environment["CODEX_HUD_HELLO_MODEL"], !override.isEmpty {
             return override
         }
-        return "gpt-5.2-codex-mini"
+        return "gpt-5.1-codex-mini"
     }
 }
 

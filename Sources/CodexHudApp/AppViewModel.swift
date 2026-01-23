@@ -263,7 +263,7 @@ final class AppViewModel: ObservableObject {
         state.forcedRefreshRecords[email] = ForcedRefreshRecord(lastAttempt: Date(), lastSuccess: record?.lastSuccess, lastFailure: record?.lastFailure)
         persist()
         do {
-            try helloSender.sendHello(modelName: defaultHelloModel())
+            try helloSender.sendHello(modelName: defaultHelloModel(), message: "hi")
             state.forcedRefreshRecords[email]?.lastSuccess = Date()
             lastRefreshSource = .forcedRefresh
             persist()
@@ -278,7 +278,7 @@ final class AppViewModel: ObservableObject {
         if let override = ProcessInfo.processInfo.environment["CODEX_HUD_HELLO_MODEL"], !override.isEmpty {
             return override
         }
-        return "gpt-5.2-codex-mini"
+        return "gpt-5.1-codex-mini"
     }
 
     private func persist() {

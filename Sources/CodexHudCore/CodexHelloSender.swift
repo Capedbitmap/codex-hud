@@ -1,7 +1,7 @@
 import Foundation
 
 public protocol HelloSending {
-    func sendHello(modelName: String?) throws
+    func sendHello(modelName: String?, message: String) throws
 }
 
 public enum HelloSenderError: Error, Equatable {
@@ -12,7 +12,7 @@ public enum HelloSenderError: Error, Equatable {
 public struct CodexHelloSender: HelloSending {
     public init() {}
 
-    public func sendHello(modelName: String?) throws {
+    public func sendHello(modelName: String?, message: String) throws {
         guard let codexPath = findCodexExecutable() else {
             throw HelloSenderError.codexNotFound
         }
@@ -20,7 +20,7 @@ public struct CodexHelloSender: HelloSending {
         if let modelName, !modelName.isEmpty {
             arguments.append(contentsOf: ["-m", modelName])
         }
-        arguments.append("hello")
+        arguments.append(message)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: codexPath)
         process.arguments = arguments

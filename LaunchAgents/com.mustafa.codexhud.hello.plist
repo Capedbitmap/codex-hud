@@ -16,11 +16,13 @@
         <key>Minute</key>
         <integer>0</integer>
     </dict>
+    <key>StartInterval</key>
+    <integer>600</integer>
     <key>StandardOutPath</key>
     <string>/tmp/codex-hud-hello.log</string>
     <key>StandardErrorPath</key>
     <string>/tmp/codex-hud-hello.err</string>
     <key>RunAtLoad</key>
-    <false/>
+    <true/>
 </dict>
 </plist>
