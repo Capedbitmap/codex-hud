@@ -1,0 +1,13 @@
+included:
+  - Sources
+  - Tests
+only_rules:
+  - force_cast
+  - force_try
+  - unused_import
+  - trailing_semicolon
+  - type_body_length
+
+type_body_length:
+  warning: 500
+  error: 800
