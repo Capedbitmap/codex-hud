@@ -2,8 +2,9 @@ import Foundation
 
 public enum ThresholdLevel: Int, Codable, Comparable, Sendable {
     case normal = 0
-    case warning = 1
-    case critical = 2
+    case caution = 1
+    case warning = 2
+    case critical = 3
 
     public static func < (lhs: ThresholdLevel, rhs: ThresholdLevel) -> Bool {
         lhs.rawValue < rhs.rawValue

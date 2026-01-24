@@ -60,6 +60,7 @@ struct WeeklyCardView: View {
         guard let remaining else { return .normal }
         if remaining <= UsageThresholds.default.depleted { return .critical }
         if remaining <= UsageThresholds.default.warning { return .warning }
+        if remaining <= UsageThresholds.default.caution { return .caution }
         return .normal
     }
 

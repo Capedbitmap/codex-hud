@@ -63,6 +63,9 @@ public struct NotificationEvaluator {
         if remaining <= thresholds.warning {
             return .warning
         }
+        if remaining <= thresholds.caution {
+            return .caution
+        }
         return .normal
     }
 

@@ -14,6 +14,8 @@ final class AppViewModel: ObservableObject {
     private let notificationEvaluator = NotificationEvaluator()
     private let notificationManager = NotificationManager()
     private let forcedRefreshEvaluator = ForcedRefreshEvaluator()
+    private let weeklyReminderEvaluator = WeeklyResetReminderEvaluator()
+    private let weeklyReminderPolicy = WeeklyResetReminderPolicy()
     private let helloSender: HelloSending
     private let refreshInterval: TimeInterval
     private var refreshTimer: Timer?
@@ -87,7 +89,14 @@ final class AppViewModel: ObservableObject {
         let logsURL = defaultLogsURL()
 
         Task {
-            defer { isRefreshing = false }
+            defer {
+                if let activeEmail = state.activeEmail {
+                    applyHelloAssumptionIfNeeded(for: activeEmail)
+                }
+                applyAssumedResets()
+                evaluateWeeklyResetReminders()
+                isRefreshing = false
+            }
             do {
                 let identity = try authDecoder.loadActiveAccount(from: authURL)
                 updateActiveEmail(identity.email)
@@ -130,7 +139,6 @@ final class AppViewModel: ObservableObject {
                 state.lastRefresh = Date()
                 lastRefreshSource = snapshot.source
                 authChangeCutoff = nil
-                applyHelloAssumptionIfNeeded(for: identity.email)
                 persist()
                 evaluateNotifications(for: state.accounts[accountIndex])
             } catch let error as SessionLogError {
@@ -144,9 +152,6 @@ final class AppViewModel: ObservableObject {
                 }
             } catch {
                 lastError = "Unable to refresh from logs."
-            }
-            if let activeEmail = state.activeEmail {
-                applyHelloAssumptionIfNeeded(for: activeEmail)
             }
         }
     }
@@ -265,19 +270,26 @@ final class AppViewModel: ObservableObject {
         if loaded.dailyHelloRecords != state.dailyHelloRecords {
             state.dailyHelloRecords = loaded.dailyHelloRecords
         }
+        if loaded.weeklyReminderRecords != state.weeklyReminderRecords {
+            state.weeklyReminderRecords = loaded.weeklyReminderRecords
+        }
         if let activeEmail = state.activeEmail {
             applyHelloAssumptionIfNeeded(for: activeEmail)
         }
     }
 
     private func applyAssumedResets() {
-        guard let activeIndex = state.activeEmail.flatMap({ email in
-            state.accounts.firstIndex(where: { $0.email == email })
-        }) else { return }
-        guard let snapshot = state.accounts[activeIndex].lastSnapshot else { return }
-        let updated = usageManager.applyAssumedResetsIfNeeded(snapshot: snapshot, now: Date())
-        if updated != snapshot {
-            state.accounts[activeIndex].lastSnapshot = updated
+        let now = Date()
+        var didChange = false
+        for index in state.accounts.indices {
+            guard let snapshot = state.accounts[index].lastSnapshot else { continue }
+            let updated = usageManager.applyAssumedResetsIfNeeded(snapshot: snapshot, now: now)
+            if updated != snapshot {
+                state.accounts[index].lastSnapshot = updated
+                didChange = true
+            }
+        }
+        if didChange {
             persist()
         }
     }
@@ -288,6 +300,32 @@ final class AppViewModel: ObservableObject {
         state.notificationLedger[account.email] = evaluation.snapshot
         persist()
         notificationManager.send(events: evaluation.events, recommendation: recommendation)
+    }
+
+    private func evaluateWeeklyResetReminder(for account: AccountRecord) {
+        guard let weekly = account.lastSnapshot?.weekly else { return }
+        guard account.email != state.activeEmail else { return }
+        let record = state.weeklyReminderRecords[account.email]
+        let decision = weeklyReminderEvaluator.decision(
+            now: Date(),
+            weekly: weekly,
+            record: record,
+            policy: weeklyReminderPolicy
+        )
+        guard case let .allowed(nextRecord) = decision else { return }
+        state.weeklyReminderRecords[account.email] = nextRecord
+        persist()
+        notificationManager.sendWeeklyResetReminder(WeeklyResetReminderEvent(
+            accountEmail: account.email,
+            codexNumber: account.codexNumber,
+            resetsAt: weekly.resetsAt
+        ))
+    }
+
+    private func evaluateWeeklyResetReminders() {
+        for account in state.accounts where account.email != state.activeEmail {
+            evaluateWeeklyResetReminder(for: account)
+        }
     }
 
     private func applyHelloAssumptionIfNeeded(for email: String) {
