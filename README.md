@@ -46,6 +46,21 @@ rm ~/Library/LaunchAgents/com.mustafa.codexhud.hello.plist
 - **No retry loops**; a failure counts toward the daily cap.
 - UI will show **Hello sent HH:MM** and mark 5‑hour resets as **assumed** until logs confirm.
 
+## Usage Thresholds
+- **Caution:** ≤ 30%
+- **Warning:** ≤ 15%
+- **Critical:** ≤ 5%
+
+## Weekly Reset Reminders
+- If a weekly reset is **assumed** (based on stored reset time) and usage is still **0%**, we notify.
+- Reminders repeat **every 5 hours between 9:00 AM–10:00 PM** until the weekly window starts.
+- Active account is excluded; only other accounts are reminded.
+
+## Weekly Reset Reminders
+- If a weekly reset is **assumed** (based on stored reset time) and usage is still **0%**, we notify.
+- Reminders repeat **every 5 hours between 9:00 AM–10:00 PM** until the weekly window starts.
+- Active account is excluded; only other accounts are reminded.
+
 ## Linting (optional but recommended)
 ```
 scripts/lint.sh
