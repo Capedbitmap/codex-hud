@@ -65,6 +65,7 @@ public struct AppState: Codable, Equatable {
     public var notificationLedger: [String: ThresholdSnapshot]
     public var forcedRefreshRecords: [String: ForcedRefreshRecord]
     public var dailyHelloRecords: [String: DailyHelloRecord]
+    public var weeklyReminderRecords: [String: WeeklyReminderRecord]
 
     public init(
         accounts: [AccountRecord],
@@ -72,7 +73,8 @@ public struct AppState: Codable, Equatable {
         lastRefresh: Date?,
         notificationLedger: [String: ThresholdSnapshot] = [:],
         forcedRefreshRecords: [String: ForcedRefreshRecord] = [:],
-        dailyHelloRecords: [String: DailyHelloRecord] = [:]
+        dailyHelloRecords: [String: DailyHelloRecord] = [:],
+        weeklyReminderRecords: [String: WeeklyReminderRecord] = [:]
     ) {
         self.accounts = accounts
         self.activeEmail = activeEmail
@@ -80,6 +82,7 @@ public struct AppState: Codable, Equatable {
         self.notificationLedger = notificationLedger
         self.forcedRefreshRecords = forcedRefreshRecords
         self.dailyHelloRecords = dailyHelloRecords
+        self.weeklyReminderRecords = weeklyReminderRecords
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -89,6 +92,7 @@ public struct AppState: Codable, Equatable {
         case notificationLedger
         case forcedRefreshRecords
         case dailyHelloRecords
+        case weeklyReminderRecords
     }
 
     public init(from decoder: Decoder) throws {
@@ -99,6 +103,7 @@ public struct AppState: Codable, Equatable {
         self.notificationLedger = try container.decodeIfPresent([String: ThresholdSnapshot].self, forKey: .notificationLedger) ?? [:]
         self.forcedRefreshRecords = try container.decodeIfPresent([String: ForcedRefreshRecord].self, forKey: .forcedRefreshRecords) ?? [:]
         self.dailyHelloRecords = try container.decodeIfPresent([String: DailyHelloRecord].self, forKey: .dailyHelloRecords) ?? [:]
+        self.weeklyReminderRecords = try container.decodeIfPresent([String: WeeklyReminderRecord].self, forKey: .weeklyReminderRecords) ?? [:]
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -109,5 +114,6 @@ public struct AppState: Codable, Equatable {
         try container.encode(notificationLedger, forKey: .notificationLedger)
         try container.encode(forcedRefreshRecords, forKey: .forcedRefreshRecords)
         try container.encode(dailyHelloRecords, forKey: .dailyHelloRecords)
+        try container.encode(weeklyReminderRecords, forKey: .weeklyReminderRecords)
     }
 }

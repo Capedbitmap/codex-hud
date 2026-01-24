@@ -4,7 +4,7 @@ import XCTest
 final class NotificationEvaluatorTests: XCTestCase {
     func testWeeklyWarningCrossingEmitsEvent() {
         let evaluator = NotificationEvaluator()
-        let account = makeAccount(weeklyUsed: 92, fiveHourUsed: 10)
+        let account = makeAccount(weeklyUsed: 86, fiveHourUsed: 10)
         let previous = ThresholdSnapshot(weekly: .normal, fiveHour: .normal)
         let evaluation = evaluator.evaluate(account: account, previous: previous)
         XCTAssertEqual(evaluation?.events.count, 1)
@@ -18,6 +18,14 @@ final class NotificationEvaluatorTests: XCTestCase {
         let previous = ThresholdSnapshot(weekly: .warning, fiveHour: .normal)
         let evaluation = evaluator.evaluate(account: account, previous: previous)
         XCTAssertEqual(evaluation?.events.first?.level, .critical)
+    }
+
+    func testWeeklyCautionCrossingEmitsEvent() {
+        let evaluator = NotificationEvaluator()
+        let account = makeAccount(weeklyUsed: 75, fiveHourUsed: 10)
+        let previous = ThresholdSnapshot(weekly: .normal, fiveHour: .normal)
+        let evaluation = evaluator.evaluate(account: account, previous: previous)
+        XCTAssertEqual(evaluation?.events.first?.level, .caution)
     }
 
     func testFiveHourSuppressedWhenWeeklyDepleted() {

@@ -22,6 +22,8 @@ enum Theme {
         switch level {
         case .normal:
             return Color.primary
+        case .caution:
+            return caution
         case .warning:
             return warning
         case .critical:
@@ -31,9 +33,9 @@ enum Theme {
 
     static func color(forRemainingPercent remaining: Double?) -> Color {
         guard let remaining else { return Color.primary }
-        if remaining <= 5 { return critical }
-        if remaining <= 10 { return warning }
-        if remaining <= 20 { return caution }
+        if remaining <= ThresholdSet.default.critical.value { return critical }
+        if remaining <= ThresholdSet.default.warning.value { return warning }
+        if remaining <= ThresholdSet.default.caution.value { return caution }
         return healthy
     }
 
