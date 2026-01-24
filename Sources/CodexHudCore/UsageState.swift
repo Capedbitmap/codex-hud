@@ -15,11 +15,15 @@ public struct UsageStateManager {
     private func applyAssumedResetIfNeeded(window: UsageWindow, now: Date) -> UsageWindow {
         guard now >= window.resetsAt else { return window }
         if window.assumedReset { return window }
+        let windowMinutes = window.windowMinutes > 0 ? window.windowMinutes : 0
+        let nextReset = windowMinutes > 0
+            ? now.addingTimeInterval(TimeInterval(windowMinutes * 60))
+            : now
         return UsageWindow(
             kind: window.kind,
             usedPercent: 0,
             windowMinutes: window.windowMinutes,
-            resetsAt: window.resetsAt,
+            resetsAt: nextReset,
             isStale: true,
             assumedReset: true
         )

@@ -269,6 +269,7 @@ final class AppViewModel: ObservableObject {
         guard let loaded = try? store?.load() else { return }
         if loaded.dailyHelloRecords != state.dailyHelloRecords {
             state.dailyHelloRecords = loaded.dailyHelloRecords
+            evaluateHelloNotifications()
         }
         if loaded.weeklyReminderRecords != state.weeklyReminderRecords {
             state.weeklyReminderRecords = loaded.weeklyReminderRecords
@@ -326,6 +327,23 @@ final class AppViewModel: ObservableObject {
         for account in state.accounts where account.email != state.activeEmail {
             evaluateWeeklyResetReminder(for: account)
         }
+    }
+
+    private func evaluateHelloNotifications() {
+        guard let activeEmail = state.activeEmail,
+              let lastRun = state.dailyHelloRecords[activeEmail]?.lastRun,
+              let account = state.accounts.first(where: { $0.email == activeEmail }) else { return }
+        if let lastNotified = state.helloNotificationRecords[activeEmail],
+           lastNotified >= lastRun {
+            return
+        }
+        state.helloNotificationRecords[activeEmail] = lastRun
+        persist()
+        notificationManager.sendHelloSentNotification(
+            accountEmail: account.email,
+            codexNumber: account.codexNumber,
+            sentAt: lastRun
+        )
     }
 
     private func applyHelloAssumptionIfNeeded(for email: String) {

@@ -82,6 +82,8 @@ struct WeeklyCardView: View {
         formatter.unitsStyle = .abbreviated
         formatter.maximumUnitCount = 2
         formatter.zeroFormattingBehavior = .dropAll
-        return formatter.string(from: Date(), to: date) ?? "soon"
+        let now = Date()
+        if date <= now { return "now" }
+        return formatter.string(from: now, to: date) ?? "soon"
     }
 }

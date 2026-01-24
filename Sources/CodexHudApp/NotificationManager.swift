@@ -34,6 +34,22 @@ final class NotificationManager {
         }
     }
 
+    func sendHelloSentNotification(accountEmail: String, codexNumber: Int, sentAt: Date) {
+        guard isRunningInAppBundle else { return }
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let granted = try? await center.requestAuthorization(options: [.alert, .sound])
+            guard granted == true else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "Codex HUD: 5-Hour Window Started"
+            let time = DateFormatter.localizedString(from: sentAt, dateStyle: .none, timeStyle: .short)
+            content.body = "Hello sent at \(time) for Codex \(codexNumber) (\(accountEmail))."
+            content.sound = .default
+            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+            try? await center.add(request)
+        }
+    }
+
     private var isRunningInAppBundle: Bool {
         Bundle.main.bundleURL.pathExtension == "app"
     }
