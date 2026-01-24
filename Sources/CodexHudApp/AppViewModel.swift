@@ -19,8 +19,10 @@ final class AppViewModel: ObservableObject {
     private var refreshTimer: Timer?
     private var authWatcher: AuthFileWatcher?
     private var logWatcher: SessionLogWatcher?
+    private var stateWatcher: StateFileWatcher?
     private var lastAuthRefresh: Date?
     private var lastLogRefresh: Date?
+    private var lastStateRefresh: Date?
     private var authChangeCutoff: Date?
     private var isRefreshing = false
 
@@ -45,6 +47,7 @@ final class AppViewModel: ObservableObject {
         startAutoRefresh()
         startAuthWatcher()
         startLogWatcher()
+        startStateWatcher()
     }
 
     var activeAccount: AccountRecord? {
@@ -69,6 +72,11 @@ final class AppViewModel: ObservableObject {
     var shouldShowFiveHour: Bool {
         guard let remaining = weeklyRemainingPercent else { return false }
         return remaining > UsageThresholds.default.depleted
+    }
+
+    var lastHelloSentAt: Date? {
+        guard let activeEmail = state.activeEmail else { return nil }
+        return state.dailyHelloRecords[activeEmail]?.lastRun
     }
 
     func refreshFromLogs() {
@@ -122,6 +130,7 @@ final class AppViewModel: ObservableObject {
                 state.lastRefresh = Date()
                 lastRefreshSource = snapshot.source
                 authChangeCutoff = nil
+                applyHelloAssumptionIfNeeded(for: identity.email)
                 persist()
                 evaluateNotifications(for: state.accounts[accountIndex])
             } catch let error as SessionLogError {
@@ -135,6 +144,9 @@ final class AppViewModel: ObservableObject {
                 }
             } catch {
                 lastError = "Unable to refresh from logs."
+            }
+            if let activeEmail = state.activeEmail {
+                applyHelloAssumptionIfNeeded(for: activeEmail)
             }
         }
     }
@@ -213,6 +225,18 @@ final class AppViewModel: ObservableObject {
         logWatcher?.start()
     }
 
+    private func startStateWatcher() {
+        stateWatcher?.stop()
+        guard let storeURL = store?.fileURL else { return }
+        stateWatcher = StateFileWatcher(fileURL: storeURL) { [weak self] in
+            guard let self else { return }
+            Task { @MainActor in
+                self.handleStateChange()
+            }
+        }
+        stateWatcher?.start()
+    }
+
     private func handleAuthChange() {
         let now = Date()
         if let last = lastAuthRefresh, now.timeIntervalSince(last) < 2 {
@@ -229,6 +253,21 @@ final class AppViewModel: ObservableObject {
         }
         lastLogRefresh = now
         refreshFromLogs()
+    }
+
+    private func handleStateChange() {
+        let now = Date()
+        if let last = lastStateRefresh, now.timeIntervalSince(last) < 2 {
+            return
+        }
+        lastStateRefresh = now
+        guard let loaded = try? store?.load() else { return }
+        if loaded.dailyHelloRecords != state.dailyHelloRecords {
+            state.dailyHelloRecords = loaded.dailyHelloRecords
+        }
+        if let activeEmail = state.activeEmail {
+            applyHelloAssumptionIfNeeded(for: activeEmail)
+        }
     }
 
     private func applyAssumedResets() {
@@ -249,6 +288,38 @@ final class AppViewModel: ObservableObject {
         state.notificationLedger[account.email] = evaluation.snapshot
         persist()
         notificationManager.send(events: evaluation.events, recommendation: recommendation)
+    }
+
+    private func applyHelloAssumptionIfNeeded(for email: String) {
+        guard let record = state.dailyHelloRecords[email],
+              let lastRun = record.lastRun,
+              let index = state.accounts.firstIndex(where: { $0.email == email }),
+              let snapshot = state.accounts[index].lastSnapshot else { return }
+        if snapshot.capturedAt >= lastRun {
+            return
+        }
+        let windowMinutes = snapshot.fiveHour.windowMinutes > 0 ? snapshot.fiveHour.windowMinutes : 300
+        let assumedReset = lastRun.addingTimeInterval(TimeInterval(windowMinutes * 60))
+        if snapshot.fiveHour.assumedReset && snapshot.fiveHour.resetsAt == assumedReset {
+            return
+        }
+        let updatedFiveHour = UsageWindow(
+            kind: .fiveHour,
+            usedPercent: 0,
+            windowMinutes: windowMinutes,
+            resetsAt: assumedReset,
+            isStale: snapshot.fiveHour.isStale,
+            assumedReset: true
+        )
+        let updatedSnapshot = RateLimitsSnapshot(
+            capturedAt: lastRun,
+            fiveHour: updatedFiveHour,
+            weekly: snapshot.weekly,
+            source: snapshot.source
+        )
+        state.accounts[index].lastSnapshot = updatedSnapshot
+        state.accounts[index].lastUpdated = Date()
+        persist()
     }
 
     private func attemptForcedRefresh(for email: String, hasAuth: Bool) {

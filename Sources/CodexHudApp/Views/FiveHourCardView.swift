@@ -41,12 +41,18 @@ struct FiveHourCardView: View {
             if let fiveHour {
                 let details = resetDetails("5-hour", date: fiveHour.resetsAt)
                 let countdown = countdownString(to: fiveHour.resetsAt)
-                Text("Resets \(formatDate(fiveHour.resetsAt))")
+                Text("Resets \(formatDate(fiveHour.resetsAt))\(fiveHour.assumedReset ? " (assumed)" : "")")
                     .font(Typography.meta)
                     .foregroundStyle(Theme.muted)
                     .help(details)
                 Text("In \(countdown)")
                     .font(Typography.caption)
+                    .foregroundStyle(Theme.muted)
+            }
+
+            if let helloSent = viewModel.lastHelloSentAt {
+                Text("Hello sent \(formatTime(helloSent))")
+                    .font(Typography.meta)
                     .foregroundStyle(Theme.muted)
             }
         }
@@ -55,6 +61,13 @@ struct FiveHourCardView: View {
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
+    private func formatTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
         formatter.timeStyle = .short
         return formatter.string(from: date)
     }
