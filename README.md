@@ -44,6 +44,13 @@ rm ~/Library/LaunchAgents/com.mustafa.codexhud.hello.plist
 - **Skip** if weekly remaining is **≤ 5%**.
 - **Skip** if 5‑hour window already started (used% > 0, after 6am snapshot).
 - **No retry loops**; a failure counts toward the daily cap.
+- UI will show **Hello sent HH:MM** and mark 5‑hour resets as **assumed** until logs confirm.
+
+## Linting (optional but recommended)
+```
+scripts/lint.sh
+```
+This runs `swiftlint` and `swiftformat` if installed.
 
 ## Environment Overrides
 - `CODEX_BIN` — absolute path to the Codex CLI if `which codex` is not available in LaunchAgent context.
