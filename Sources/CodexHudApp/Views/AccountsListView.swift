@@ -79,6 +79,7 @@ struct AccountsListView: View {
         formatter.unitsStyle = .abbreviated
         formatter.maximumUnitCount = 2
         formatter.zeroFormattingBehavior = .dropAll
+        if date <= now { return "now" }
         return formatter.string(from: now, to: date) ?? "soon"
     }
 
@@ -181,6 +182,7 @@ private struct AccountStripItem: View {
         formatter.unitsStyle = .abbreviated
         formatter.maximumUnitCount = 2
         formatter.zeroFormattingBehavior = .dropAll
+        if date <= now { return "now" }
         return formatter.string(from: now, to: date) ?? "—"
     }
 }
