@@ -27,6 +27,7 @@ final class AppViewModel: ObservableObject {
     private var lastStateRefresh: Date?
     private var authChangeCutoff: Date?
     private var isRefreshing = false
+    private var lastLogFileProcessed: URL?
 
     init(
         helloSender: HelloSending = CodexHelloSender(),
@@ -221,10 +222,10 @@ final class AppViewModel: ObservableObject {
 
     private func startLogWatcher() {
         logWatcher?.stop()
-        logWatcher = SessionLogWatcher(logsURL: defaultLogsURL()) { [weak self] in
+        logWatcher = SessionLogWatcher(logsURL: defaultLogsURL()) { [weak self] fileURL in
             guard let self else { return }
             Task { @MainActor in
-                self.handleLogChange()
+                self.handleLogChange(fileURL)
             }
         }
         logWatcher?.start()
@@ -251,12 +252,16 @@ final class AppViewModel: ObservableObject {
         refreshFromLogs()
     }
 
-    private func handleLogChange() {
+    private func handleLogChange(_ fileURL: URL?) {
         let now = Date()
         if let last = lastLogRefresh, now.timeIntervalSince(last) < 5 {
             return
         }
+        if let fileURL, fileURL == lastLogFileProcessed {
+            return
+        }
         lastLogRefresh = now
+        lastLogFileProcessed = fileURL
         refreshFromLogs()
     }
 

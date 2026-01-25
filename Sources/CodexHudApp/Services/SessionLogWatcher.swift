@@ -3,7 +3,7 @@ import Foundation
 final class SessionLogWatcher {
     private let logsURL: URL
     private let queue: DispatchQueue
-    private let onChange: () -> Void
+    private let onChange: (URL?) -> Void
     private var rootSource: DispatchSourceFileSystemObject?
     private var rootDescriptor: Int32 = -1
     private var sessionSource: DispatchSourceFileSystemObject?
@@ -13,7 +13,7 @@ final class SessionLogWatcher {
     private var currentFile: URL?
     private var currentSessionDir: URL?
 
-    init(logsURL: URL, onChange: @escaping () -> Void) {
+    init(logsURL: URL, onChange: @escaping (URL?) -> Void) {
         self.logsURL = logsURL
         self.queue = DispatchQueue(label: "codex.hud.logwatcher")
         self.onChange = onChange
@@ -86,7 +86,7 @@ final class SessionLogWatcher {
                 self.updateFileWatcher()
                 return
             }
-            self.onChange()
+            self.onChange(self.currentFile)
         }
         fileSource?.setCancelHandler { [weak self] in
             if let fd = self?.fileDescriptor, fd >= 0 { close(fd) }
