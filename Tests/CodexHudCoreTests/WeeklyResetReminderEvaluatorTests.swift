@@ -14,6 +14,18 @@ final class WeeklyResetReminderEvaluatorTests: XCTestCase {
         XCTAssertEqual(record.lastNotified, now)
     }
 
+    func testAllowsWhenWeeklyResetPassedWithoutAssumption() {
+        let evaluator = WeeklyResetReminderEvaluator()
+        let policy = WeeklyResetReminderPolicy(startHour: 9, endHour: 22, interval: 5 * 60 * 60)
+        let now = Self.date(hour: 12)
+        let resetAt = now.addingTimeInterval(-8 * 24 * 60 * 60)
+        let weekly = UsageWindow(kind: .weekly, usedPercent: 0, windowMinutes: 10080, resetsAt: resetAt, isStale: false, assumedReset: false)
+        let decision = evaluator.decision(now: now, weekly: weekly, record: nil, policy: policy)
+        guard case .allowed = decision else {
+            return XCTFail("Expected allowed decision")
+        }
+    }
+
     func testBlocksOutsideWindow() {
         let evaluator = WeeklyResetReminderEvaluator()
         let policy = WeeklyResetReminderPolicy(startHour: 9, endHour: 22, interval: 5 * 60 * 60)

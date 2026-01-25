@@ -34,8 +34,9 @@ public struct WeeklyResetReminderEvaluator {
         record: WeeklyReminderRecord?,
         policy: WeeklyResetReminderPolicy
     ) -> WeeklyReminderDecision {
-        guard weekly.assumedReset else { return .blocked }
         guard weekly.usedPercent == 0 else { return .blocked }
+        let resetBaseline = weekly.assumedReset ? weekly.resetsAt : weekly.resetsAt.addingTimeInterval(TimeInterval(weekly.windowMinutes * 60))
+        guard now >= resetBaseline else { return .blocked }
         let calendar = Calendar.current
         guard let windowStart = calendar.date(bySettingHour: policy.startHour, minute: 0, second: 0, of: now),
               let windowEnd = calendar.date(bySettingHour: policy.endHour, minute: 0, second: 0, of: now) else {
