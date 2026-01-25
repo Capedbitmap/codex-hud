@@ -19,6 +19,7 @@ final class AppViewModel: ObservableObject {
     private let helloSender: HelloSending
     private let refreshInterval: TimeInterval
     private var refreshTimer: Timer?
+    private var stateTimer: Timer?
     private var authWatcher: AuthFileWatcher?
     private var logWatcher: SessionLogWatcher?
     private var stateWatcher: StateFileWatcher?
@@ -48,6 +49,7 @@ final class AppViewModel: ObservableObject {
         refreshActiveEmail()
         applyAssumedResets()
         startAutoRefresh()
+        startStateMaintenance()
         startAuthWatcher()
         startLogWatcher()
         startStateWatcher()
@@ -229,6 +231,18 @@ final class AppViewModel: ObservableObject {
         }
         refreshTimer?.tolerance = refreshInterval * 0.1
         refreshFromLogs()
+    }
+
+    private func startStateMaintenance() {
+        stateTimer?.invalidate()
+        stateTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                self.applyAssumedResets()
+                self.evaluateWeeklyResetReminders()
+            }
+        }
+        stateTimer?.tolerance = 6
     }
 
     private func startAuthWatcher() {
