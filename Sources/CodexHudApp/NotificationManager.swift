@@ -4,9 +4,22 @@ import CodexHudCore
 
 @MainActor
 final class NotificationManager {
+    func requestAuthorization() async -> Bool {
+        let center = UNUserNotificationCenter.current()
+        if let granted = try? await center.requestAuthorization(options: [.alert, .sound]) {
+            return granted
+        }
+        return false
+    }
+
+    func currentAuthorizationStatus() async -> UNAuthorizationStatus {
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+        return settings.authorizationStatus
+    }
+
     func send(events: [NotificationEvent], recommendation: RecommendationDecision) {
         guard !events.isEmpty else { return }
-        guard isRunningInAppBundle else { return }
 
         Task {
             let center = UNUserNotificationCenter.current()
@@ -19,7 +32,6 @@ final class NotificationManager {
     }
 
     func sendWeeklyResetReminder(_ reminder: WeeklyResetReminderEvent) {
-        guard isRunningInAppBundle else { return }
         Task {
             let center = UNUserNotificationCenter.current()
             let granted = try? await center.requestAuthorization(options: [.alert, .sound])
@@ -35,7 +47,6 @@ final class NotificationManager {
     }
 
     func sendHelloSentNotification(accountEmail: String, codexNumber: Int, sentAt: Date) {
-        guard isRunningInAppBundle else { return }
         Task {
             let center = UNUserNotificationCenter.current()
             let granted = try? await center.requestAuthorization(options: [.alert, .sound])
@@ -48,10 +59,6 @@ final class NotificationManager {
             let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
             try? await center.add(request)
         }
-    }
-
-    private var isRunningInAppBundle: Bool {
-        Bundle.main.bundleURL.pathExtension == "app"
     }
 
     private func enqueue(event: NotificationEvent, recommendation: RecommendationDecision, center: UNUserNotificationCenter) async {

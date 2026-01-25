@@ -157,6 +157,28 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    func requestNotifications() async -> Bool {
+        await notificationManager.requestAuthorization()
+    }
+
+    func notificationStatusText() async -> String {
+        let status = await notificationManager.currentAuthorizationStatus()
+        switch status {
+        case .notDetermined:
+            return "Not requested"
+        case .denied:
+            return "Denied"
+        case .authorized:
+            return "Enabled"
+        case .provisional:
+            return "Provisional"
+        case .ephemeral:
+            return "Ephemeral"
+        @unknown default:
+            return "Unknown"
+        }
+    }
+
     func saveAccounts(_ accounts: [AccountRecord]) {
         let normalized = accounts.map { incoming -> AccountRecord in
             if let existing = state.accounts.first(where: { $0.email == incoming.email }) {
