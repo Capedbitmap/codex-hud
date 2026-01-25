@@ -16,9 +16,17 @@ public struct UsageStateManager {
         guard now >= window.resetsAt else { return window }
         if window.assumedReset { return window }
         let windowMinutes = window.windowMinutes > 0 ? window.windowMinutes : 0
-        let nextReset = windowMinutes > 0
-            ? now.addingTimeInterval(TimeInterval(windowMinutes * 60))
-            : now
+        var nextReset = window.resetsAt
+        if windowMinutes > 0 {
+            let interval = TimeInterval(windowMinutes * 60)
+            if now >= window.resetsAt {
+                let elapsed = now.timeIntervalSince(window.resetsAt)
+                let cycles = Int(floor(elapsed / interval)) + 1
+                nextReset = window.resetsAt.addingTimeInterval(interval * Double(cycles))
+            }
+        } else {
+            nextReset = now
+        }
         return UsageWindow(
             kind: window.kind,
             usedPercent: 0,

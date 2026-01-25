@@ -60,8 +60,9 @@ struct AccountsListView: View {
         case .unknown:
             lines.append("Weekly resets: no data")
         }
-        if account.email == viewModel.state.activeEmail, let fiveHour = account.lastSnapshot?.fiveHour {
-            lines.append("5-hour resets: \(formatDate(fiveHour.resetsAt)) (\(countdownString(to: fiveHour.resetsAt, now: now)))")
+        if let fiveHour = account.lastSnapshot?.fiveHour {
+            let assumed = fiveHour.assumedReset ? " (assumed)" : ""
+            lines.append("5-hour resets\(assumed): \(formatDate(fiveHour.resetsAt)) (\(countdownString(to: fiveHour.resetsAt, now: now)))")
         }
         return lines.joined(separator: "\n")
     }
@@ -243,6 +244,16 @@ private struct AccountHoverDetail: View {
     let weeklyTimeRemainingPercent: Double?
     let weeklyResetDate: Date?
     let now: Date
+    private var fiveHourRemainingPercent: Double? {
+        guard let used = account.lastSnapshot?.fiveHour.usedPercent else { return nil }
+        return max(0, min(100, 100 - used))
+    }
+    private var fiveHourResetDate: Date? {
+        account.lastSnapshot?.fiveHour.resetsAt
+    }
+    private var fiveHourAssumed: Bool {
+        account.lastSnapshot?.fiveHour.assumedReset == true
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -268,12 +279,29 @@ private struct AccountHoverDetail: View {
                 trailingText: weeklyResetDate.map { countdownString(to: $0, now: now) } ?? "—"
             )
 
+            if let fiveHourRemainingPercent {
+                HoverMetricRow(
+                    title: "5-hour remaining",
+                    systemImage: "timer",
+                    percent: fiveHourRemainingPercent,
+                    color: Theme.color(forRemainingPercent: fiveHourRemainingPercent).opacity(0.95),
+                    trailingText: "\(Int(fiveHourRemainingPercent))%"
+                )
+            }
+
             if let weeklyResetDate {
                 Text("Resets \(formatDate(weeklyResetDate))")
                     .font(Typography.meta)
                     .foregroundStyle(Theme.muted)
             } else {
                 Text("Resets —")
+                    .font(Typography.meta)
+                    .foregroundStyle(Theme.muted)
+            }
+
+            if let fiveHourResetDate {
+                let assumed = fiveHourAssumed ? " (assumed)" : ""
+                Text("5-hour resets\(assumed) \(formatDate(fiveHourResetDate))")
                     .font(Typography.meta)
                     .foregroundStyle(Theme.muted)
             }
