@@ -1,10 +1,12 @@
 import SwiftUI
+import AppKit
 import CodexHudCore
 
 struct SettingsView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var drafts: [AccountDraft] = []
     @State private var message: String?
+    @State private var notificationStatus: String = "Checking…"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -43,6 +45,25 @@ struct SettingsView: View {
 
             GlassDivider()
 
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Notifications")
+                    .font(Typography.cardTitle)
+                Text(notificationStatus)
+                    .font(Typography.meta)
+                    .foregroundStyle(Theme.muted)
+                HStack(spacing: 12) {
+                    Button("Request Permission") {
+                        Task { await requestNotifications() }
+                    }
+                    .buttonStyle(GlassButtonStyle())
+
+                    Button("Open System Settings") {
+                        openNotificationSettings()
+                    }
+                    .buttonStyle(GlassButtonStyle())
+                }
+            }
+
             VStack(alignment: .leading, spacing: 6) {
                 Text("Diagnostics")
                     .font(Typography.cardTitle)
@@ -68,7 +89,10 @@ struct SettingsView: View {
         .background(
             GlassSurface(cornerRadius: 24, material: .popover, elevation: .raised, tint: nil, animateHighlight: false)
         )
-        .onAppear { loadDrafts() }
+        .onAppear {
+            loadDrafts()
+            Task { await refreshNotificationStatus() }
+        }
     }
 
     private var isValid: Bool {
@@ -95,6 +119,27 @@ struct SettingsView: View {
         let accounts = drafts.map { $0.toAccountRecord() }
         viewModel.saveAccounts(accounts)
         message = "Saved"
+    }
+
+    private func refreshNotificationStatus() async {
+        let status = await viewModel.notificationStatusText()
+        await MainActor.run {
+            notificationStatus = status
+        }
+    }
+
+    private func requestNotifications() async {
+        let granted = await viewModel.requestNotifications()
+        let status = granted ? "Enabled" : "Denied"
+        await MainActor.run {
+            notificationStatus = status
+        }
+    }
+
+    private func openNotificationSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     private func formatDate(_ date: Date) -> String {
