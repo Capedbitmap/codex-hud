@@ -12,7 +12,13 @@ Private macOS menu bar app for tracking Codex usage across five accounts. It rea
 ### App (menu bar)
 ```
 cd /Users/Mustafa/DevFiles/Mac\ Apps/codex-hud
-swift run CodexHudApp
+./scripts/run-app.sh
+```
+
+Build only (creates `.build/CodexHudApp.app`):
+```
+./scripts/build-app.sh
+open .build/CodexHudApp.app
 ```
 
 ### Automation (daily hello)
