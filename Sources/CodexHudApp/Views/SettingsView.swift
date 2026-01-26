@@ -129,11 +129,8 @@ struct SettingsView: View {
     }
 
     private func requestNotifications() async {
-        let granted = await viewModel.requestNotifications()
-        let status = granted ? "Enabled" : "Denied"
-        await MainActor.run {
-            notificationStatus = status
-        }
+        _ = await viewModel.requestNotifications()
+        await refreshNotificationStatus()
     }
 
     private func openNotificationSettings() {
