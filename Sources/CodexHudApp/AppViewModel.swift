@@ -159,25 +159,30 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    func requestNotifications() async -> Bool {
+    func requestNotifications() async -> NotificationAuthorizationRequestResult {
         await notificationManager.requestAuthorization()
     }
 
     func notificationStatusText() async -> String {
         let status = await notificationManager.currentAuthorizationStatus()
         switch status {
-        case .notDetermined:
-            return "Not requested"
-        case .denied:
-            return "Denied"
-        case .authorized:
-            return "Enabled"
-        case .provisional:
-            return "Provisional"
-        case .ephemeral:
-            return "Ephemeral"
-        @unknown default:
-            return "Unknown"
+        case .unavailable(let reason):
+            return reason.statusText
+        case .available(let authorizationStatus):
+            switch authorizationStatus {
+            case .notDetermined:
+                return "Not requested"
+            case .denied:
+                return "Denied"
+            case .authorized:
+                return "Enabled"
+            case .provisional:
+                return "Provisional"
+            case .ephemeral:
+                return "Ephemeral"
+            @unknown default:
+                return "Unknown"
+            }
         }
     }
 

@@ -1,26 +1,73 @@
 import Foundation
+import OSLog
 import UserNotifications
 import CodexHudCore
 
+enum NotificationUnavailableReason {
+    case missingAppBundle
+
+    var statusText: String {
+        switch self {
+        case .missingAppBundle:
+            return "Unavailable (launch the .app bundle)"
+        }
+    }
+}
+
+enum NotificationAuthorizationStatus {
+    case unavailable(NotificationUnavailableReason)
+    case available(UNAuthorizationStatus)
+}
+
+enum NotificationAuthorizationRequestResult {
+    case unavailable(NotificationUnavailableReason)
+    case granted
+    case denied
+}
+
+private enum NotificationAvailability {
+    case available
+    case unavailable(NotificationUnavailableReason)
+
+    static func from(bundleURL: URL) -> NotificationAvailability {
+        bundleURL.pathExtension == "app" ? .available : .unavailable(.missingAppBundle)
+    }
+}
+
 @MainActor
 final class NotificationManager {
-    func requestAuthorization() async -> Bool {
-        let center = UNUserNotificationCenter.current()
-        if let granted = try? await center.requestAuthorization(options: [.alert, .sound]) {
-            return granted
-        }
-        return false
+    private static let logger = Logger(subsystem: "codex.hud", category: "notifications")
+    private let availability: NotificationAvailability
+    private let bundleURL: URL
+    private var didLogUnavailable = false
+
+    init(bundleURL: URL = Bundle.main.bundleURL) {
+        self.bundleURL = bundleURL
+        self.availability = NotificationAvailability.from(bundleURL: bundleURL)
     }
 
-    func currentAuthorizationStatus() async -> UNAuthorizationStatus {
+    func requestAuthorization() async -> NotificationAuthorizationRequestResult {
+        if let reason = unavailableReason() {
+            return .unavailable(reason)
+        }
+        let center = UNUserNotificationCenter.current()
+        let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+        return granted ? .granted : .denied
+    }
+
+    func currentAuthorizationStatus() async -> NotificationAuthorizationStatus {
+        if let reason = unavailableReason() {
+            return .unavailable(reason)
+        }
         let center = UNUserNotificationCenter.current()
         let settings = await center.notificationSettings()
-        return settings.authorizationStatus
+        return .available(settings.authorizationStatus)
     }
 
     func send(events: [NotificationEvent], recommendation: RecommendationDecision) {
         guard !events.isEmpty else { return }
 
+        guard unavailableReason() == nil else { return }
         Task {
             let center = UNUserNotificationCenter.current()
             let granted = try? await center.requestAuthorization(options: [.alert, .sound])
@@ -32,6 +79,7 @@ final class NotificationManager {
     }
 
     func sendWeeklyResetReminder(_ reminder: WeeklyResetReminderEvent) {
+        guard unavailableReason() == nil else { return }
         Task {
             let center = UNUserNotificationCenter.current()
             let granted = try? await center.requestAuthorization(options: [.alert, .sound])
@@ -47,6 +95,7 @@ final class NotificationManager {
     }
 
     func sendHelloSentNotification(accountEmail: String, codexNumber: Int, sentAt: Date) {
+        guard unavailableReason() == nil else { return }
         Task {
             let center = UNUserNotificationCenter.current()
             let granted = try? await center.requestAuthorization(options: [.alert, .sound])
@@ -94,5 +143,15 @@ final class NotificationManager {
             return prefix
         }
         return "\(prefix) Switch to Codex \(next.codexNumber) (\(next.email))."
+    }
+
+    private func unavailableReason() -> NotificationUnavailableReason? {
+        guard case let .unavailable(reason) = availability else { return nil }
+        if !didLogUnavailable {
+            didLogUnavailable = true
+            let bundleName = bundleURL.lastPathComponent
+            Self.logger.notice("User notifications unavailable; not running inside an .app bundle. bundle=\(bundleName, privacy: .public)")
+        }
+        return reason
     }
 }
