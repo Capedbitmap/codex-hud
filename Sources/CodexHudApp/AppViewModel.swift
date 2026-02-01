@@ -164,6 +164,10 @@ final class AppViewModel: ObservableObject {
         await notificationManager.requestAuthorization()
     }
 
+    func sendTestNotification() {
+        notificationManager.sendTestNotification()
+    }
+
     func notificationStatusText() async -> String {
         let status = await notificationManager.currentAuthorizationStatus()
         switch status {

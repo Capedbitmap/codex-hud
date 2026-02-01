@@ -23,6 +23,7 @@ enum NotificationAuthorizationRequestResult {
     case unavailable(NotificationUnavailableReason)
     case granted
     case denied
+    case failed
 }
 
 private enum NotificationAvailability {
@@ -51,8 +52,13 @@ final class NotificationManager {
             return .unavailable(reason)
         }
         let center = UNUserNotificationCenter.current()
-        let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
-        return granted ? .granted : .denied
+        do {
+            let granted = try await center.requestAuthorization(options: [.alert, .sound])
+            return granted ? .granted : .denied
+        } catch {
+            Self.logger.error("Notification authorization request failed. error=\(String(describing: error), privacy: .public)")
+            return .failed
+        }
     }
 
     func currentAuthorizationStatus() async -> NotificationAuthorizationStatus {
@@ -70,11 +76,26 @@ final class NotificationManager {
         guard unavailableReason() == nil else { return }
         Task {
             let center = UNUserNotificationCenter.current()
-            let granted = try? await center.requestAuthorization(options: [.alert, .sound])
-            guard granted == true else { return }
+            let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+            guard granted else { return }
             for event in events {
                 await enqueue(event: event, recommendation: recommendation, center: center)
             }
+        }
+    }
+
+    func sendTestNotification() {
+        guard unavailableReason() == nil else { return }
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "Codex HUD: Test Notification"
+            content.body = "If you can read this, notifications are working."
+            content.sound = .default
+            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+            try? await center.add(request)
         }
     }
 

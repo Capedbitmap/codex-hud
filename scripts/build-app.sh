@@ -52,4 +52,6 @@ sed \
   -e "s|__BUILD__|$BUILD_NUMBER|g" \
   "$INFO_PLIST_SRC" > "$CONTENTS_DIR/Info.plist"
 
+codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || true
+
 echo "Built app bundle at $APP_DIR"

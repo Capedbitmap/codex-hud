@@ -21,5 +21,5 @@ if pgrep -x "$APP_NAME" >/dev/null 2>&1; then
 fi
 
 echo "Opening $APP_DIR"
-defaults read "$APP_DIR/Contents/Info" CFBundleIdentifier 2>/dev/null | sed 's/^/Bundle ID: /' || true
+defaults read "$APP_DIR/Contents/Info.plist" CFBundleIdentifier 2>/dev/null | sed 's/^/Bundle ID: /' || true
 open -n "$APP_DIR"
