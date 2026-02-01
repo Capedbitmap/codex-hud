@@ -537,6 +537,8 @@ private extension URL {
 }
 
 private extension AppViewModel {
-    static let defaultHealthCheckInterval: TimeInterval = 60 * 60
+    // Safety net in case filesystem events are missed (sleep/wake, log rotation, etc.).
+    // Parsing is tail-based so this is intentionally kept reasonably frequent.
+    static let defaultHealthCheckInterval: TimeInterval = 5 * 60
     static let logTailBytes: Int = 256 * 1024
 }
