@@ -40,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showPopover() {
         guard let button = statusItem?.button else { return }
+        viewModel.refreshFromLogs()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         configurePopoverWindow()
         startEventMonitor()
