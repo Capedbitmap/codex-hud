@@ -7,6 +7,7 @@ struct SettingsView: View {
     @State private var drafts: [AccountDraft] = []
     @State private var message: String?
     @State private var notificationStatus: String = "Checking…"
+    @State private var notificationMessage: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -51,9 +52,19 @@ struct SettingsView: View {
                 Text(notificationStatus)
                     .font(Typography.meta)
                     .foregroundStyle(Theme.muted)
+                if let notificationMessage {
+                    Text(notificationMessage)
+                        .font(Typography.meta)
+                        .foregroundStyle(Theme.secondary)
+                }
                 HStack(spacing: 12) {
                     Button("Request Permission") {
                         Task { await requestNotifications() }
+                    }
+                    .buttonStyle(GlassButtonStyle())
+
+                    Button("Send Test Notification") {
+                        viewModel.sendTestNotification()
                     }
                     .buttonStyle(GlassButtonStyle())
 
@@ -129,7 +140,19 @@ struct SettingsView: View {
     }
 
     private func requestNotifications() async {
-        _ = await viewModel.requestNotifications()
+        let result = await viewModel.requestNotifications()
+        await MainActor.run {
+            switch result {
+            case .granted:
+                notificationMessage = "Permission granted."
+            case .denied:
+                notificationMessage = "Permission denied."
+            case .failed:
+                notificationMessage = "Request failed (see Console logs)."
+            case .unavailable(let reason):
+                notificationMessage = reason.statusText
+            }
+        }
         await refreshNotificationStatus()
     }
 
