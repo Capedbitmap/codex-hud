@@ -12,6 +12,12 @@ BUILD_NUMBER="${BUILD_NUMBER:-1}"
 INFO_PLIST_SRC="${INFO_PLIST_SRC:-$ROOT_DIR/scripts/AppInfo.plist}"
 APP_DIR="${APP_DIR:-$ROOT_DIR/.build/${APP_NAME}.app}"
 
+(
+  cd "$ROOT_DIR"
+  swift build -c "$CONFIGURATION" --product "$APP_NAME"
+  swift build -c "$CONFIGURATION" --product CodexHudAutomation
+)
+
 BIN_DIR="$(cd "$ROOT_DIR" && swift build -c "$CONFIGURATION" --show-bin-path)"
 EXECUTABLE_PATH="$BIN_DIR/$APP_NAME"
 AUTOMATION_BIN="$BIN_DIR/CodexHudAutomation"
@@ -19,10 +25,6 @@ AUTOMATION_BIN="$BIN_DIR/CodexHudAutomation"
 if [ ! -x "$EXECUTABLE_PATH" ]; then
   echo "Executable not found at $EXECUTABLE_PATH"
   exit 1
-fi
-
-if [ ! -x "$AUTOMATION_BIN" ]; then
-  (cd "$ROOT_DIR" && swift build -c "$CONFIGURATION" --product CodexHudAutomation >/dev/null)
 fi
 
 CONTENTS_DIR="$APP_DIR/Contents"
