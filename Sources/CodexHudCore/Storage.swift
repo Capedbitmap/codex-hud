@@ -13,16 +13,18 @@ public struct AppStateStore {
         self.fileURL = fileURL
     }
 
-    public static func defaultStore(appIdentifier: String = "com.mustafa.codexhud") throws -> AppStateStore {
+    public static func defaultStore(appIdentifier: String? = nil) throws -> AppStateStore {
         let fm = FileManager.default
         guard let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             throw StorageError.directoryUnavailable
         }
-        let dir = base.appendingPathComponent(appIdentifier, isDirectory: true)
+        let resolvedIdentifier = appIdentifier ?? Bundle.main.bundleIdentifier ?? "com.mustafa.codexhud"
+        let dir = base.appendingPathComponent(resolvedIdentifier, isDirectory: true)
         if !fm.fileExists(atPath: dir.path) {
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
         }
         let fileURL = dir.appendingPathComponent("state.json")
+        try StorageMigration.migrateStateIfNeeded(into: fileURL, baseDirectory: base, preferredIdentifier: resolvedIdentifier)
         return AppStateStore(fileURL: fileURL)
     }
 
@@ -38,11 +40,129 @@ public struct AppStateStore {
 
     public func save(_ state: AppState) throws {
         do {
+            try StorageBackup.maybeBackupExistingStateFile(at: fileURL, newAccountCount: state.accounts.count)
             let data = try JSONEncoder.codex.encode(state)
             try data.write(to: fileURL, options: [.atomic])
         } catch {
             throw StorageError.failedToWrite
         }
+    }
+}
+
+private enum StorageBackup {
+    private static let maxBackupsToKeep = 5
+    private static let minimumBackupInterval: TimeInterval = 6 * 60 * 60
+
+    static func maybeBackupExistingStateFile(at fileURL: URL, newAccountCount: Int) throws {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: fileURL.path) else { return }
+
+        let existingAccountCount = StorageMigration.stateAccountCount(at: fileURL) ?? 0
+        let isAccountDecrease = existingAccountCount > newAccountCount
+
+        if !isAccountDecrease {
+            if let mostRecent = mostRecentBackupDate(for: fileURL),
+               Date().timeIntervalSince(mostRecent) < minimumBackupInterval {
+                return
+            }
+        }
+
+        let timestamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let backupURL = fileURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("state.json.bak.\(timestamp)")
+
+        try? fm.copyItem(at: fileURL, to: backupURL)
+        pruneOldBackups(for: fileURL, keep: maxBackupsToKeep)
+    }
+
+    private static func mostRecentBackupDate(for fileURL: URL) -> Date? {
+        let fm = FileManager.default
+        let dir = fileURL.deletingLastPathComponent()
+        let items = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
+        let backups = items.filter { $0.lastPathComponent.hasPrefix("state.json.bak.") }
+        let dates = backups.compactMap { (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) }
+        return dates.max()
+    }
+
+    private static func pruneOldBackups(for fileURL: URL, keep: Int) {
+        let fm = FileManager.default
+        let dir = fileURL.deletingLastPathComponent()
+        let items = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
+        let backups = items
+            .filter { $0.lastPathComponent.hasPrefix("state.json.bak.") }
+            .sorted { lhs, rhs in
+                let lhsDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date.distantPast
+                let rhsDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date.distantPast
+                return lhsDate > rhsDate
+            }
+        guard backups.count > keep else { return }
+        for url in backups.suffix(from: keep) {
+            try? fm.removeItem(at: url)
+        }
+    }
+}
+
+private enum StorageMigration {
+    static func migrateStateIfNeeded(into targetFile: URL, baseDirectory: URL, preferredIdentifier: String) throws {
+        let fm = FileManager.default
+
+        let legacyIdentifiers = ["com.mustafa.codexhud", "com.mustafa.codex-hud"]
+        let legacyFiles = legacyIdentifiers
+            .filter { $0 != preferredIdentifier }
+            .map { id in
+                baseDirectory
+                    .appendingPathComponent(id, isDirectory: true)
+                    .appendingPathComponent("state.json")
+            }
+
+        let targetExists = fm.fileExists(atPath: targetFile.path)
+        let targetAccounts = targetExists ? (stateAccountCount(at: targetFile) ?? 0) : 0
+
+        var best: (url: URL, modifiedAt: Date, accounts: Int)?
+        for legacyFile in legacyFiles {
+            guard fm.fileExists(atPath: legacyFile.path) else { continue }
+            let accounts = stateAccountCount(at: legacyFile) ?? 0
+            let modifiedAt = (try? legacyFile.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date.distantPast
+            if let current = best {
+                let prefer = accounts > current.accounts || (accounts == current.accounts && modifiedAt > current.modifiedAt)
+                if prefer { best = (legacyFile, modifiedAt, accounts) }
+            } else {
+                best = (legacyFile, modifiedAt, accounts)
+            }
+        }
+
+        guard let best else { return }
+
+        // If the target already exists but appears unconfigured, prefer a legacy file that has accounts.
+        if targetExists, targetAccounts == 0, best.accounts > 0 {
+            try backupStateFile(targetFile)
+            try fm.removeItem(at: targetFile)
+            try fm.copyItem(at: best.url, to: targetFile)
+            return
+        }
+
+        // If target doesn't exist, migrate the best legacy file (even if empty) to keep continuity.
+        if !targetExists {
+            try fm.createDirectory(at: targetFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try fm.copyItem(at: best.url, to: targetFile)
+        }
+    }
+
+    private static func backupStateFile(_ fileURL: URL) throws {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: fileURL.path) else { return }
+        let timestamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let backup = fileURL.deletingLastPathComponent().appendingPathComponent("state.json.bak.\(timestamp)")
+        try? fm.copyItem(at: fileURL, to: backup)
+    }
+
+    fileprivate static func stateAccountCount(at fileURL: URL) -> Int? {
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        guard let obj = try? JSONSerialization.jsonObject(with: data),
+              let dict = obj as? [String: Any] else { return nil }
+        let accounts = dict["accounts"] as? [Any]
+        return accounts?.count
     }
 }
 

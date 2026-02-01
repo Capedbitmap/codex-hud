@@ -4,6 +4,7 @@ final class SessionLogWatcher {
     private let logsURL: URL
     private let queue: DispatchQueue
     private let onChange: (URL?) -> Void
+    private let locator: SessionLogLocator
     private var rootSource: DispatchSourceFileSystemObject?
     private var rootDescriptor: Int32 = -1
     private var sessionSource: DispatchSourceFileSystemObject?
@@ -17,6 +18,7 @@ final class SessionLogWatcher {
         self.logsURL = logsURL
         self.queue = DispatchQueue(label: "codex.hud.logwatcher")
         self.onChange = onChange
+        self.locator = SessionLogLocator(logsURL: logsURL)
     }
 
     func start() {
@@ -96,7 +98,7 @@ final class SessionLogWatcher {
     }
 
     private func updateFileWatcher() {
-        guard let latest = latestLogFile() else { return }
+        guard let latest = locator.latestLogFile() else { return }
         if currentFile != latest {
             fileSource?.cancel()
             fileSource = nil
@@ -110,20 +112,5 @@ final class SessionLogWatcher {
             currentSessionDir = sessionDir
             startSessionWatcher(for: sessionDir)
         }
-    }
-
-    private func latestLogFile() -> URL? {
-        let enumerator = FileManager.default.enumerator(at: logsURL, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles])
-        var newest: (url: URL, date: Date)?
-        while let item = enumerator?.nextObject() as? URL {
-            guard item.pathExtension == "jsonl" else { continue }
-            let date = (try? item.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date.distantPast
-            if let current = newest {
-                if date > current.date { newest = (item, date) }
-            } else {
-                newest = (item, date)
-            }
-        }
-        return newest?.url
     }
 }

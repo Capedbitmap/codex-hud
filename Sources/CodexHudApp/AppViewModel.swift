@@ -8,7 +8,6 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var lastRefreshSource: SnapshotSource?
 
     private let store: AppStateStore?
-    private let logParser = SessionLogParser()
     private let authDecoder = AuthDecoder()
     private let usageManager = UsageStateManager()
     private let notificationEvaluator = NotificationEvaluator()
@@ -17,9 +16,10 @@ final class AppViewModel: ObservableObject {
     private let weeklyReminderEvaluator = WeeklyResetReminderEvaluator()
     private let weeklyReminderPolicy = WeeklyResetReminderPolicy()
     private let helloSender: HelloSending
-    private let refreshInterval: TimeInterval
-    private var refreshTimer: Timer?
-    private var stateTimer: Timer?
+    private let logIngestor: SessionLogIngestor
+    private let healthCheckInterval: TimeInterval
+    private var healthTimer: Timer?
+    private var maintenanceTimer: Timer?
     private var authWatcher: AuthFileWatcher?
     private var logWatcher: SessionLogWatcher?
     private var stateWatcher: StateFileWatcher?
@@ -28,14 +28,14 @@ final class AppViewModel: ObservableObject {
     private var lastStateRefresh: Date?
     private var authChangeCutoff: Date?
     private var isRefreshing = false
-    private var lastLogFileProcessed: URL?
 
     init(
         helloSender: HelloSending = CodexHelloSender(),
-        refreshInterval: TimeInterval = AppViewModel.defaultRefreshInterval
+        healthCheckInterval: TimeInterval = AppViewModel.defaultHealthCheckInterval
     ) {
         self.helloSender = helloSender
-        self.refreshInterval = refreshInterval
+        self.healthCheckInterval = healthCheckInterval
+        self.logIngestor = SessionLogIngestor(logsURL: URL(fileURLWithPath: "~/.codex/sessions").expandingTildeInPath, tailBytes: Self.logTailBytes)
         do {
             store = try AppStateStore.defaultStore()
         } catch {
@@ -48,11 +48,12 @@ final class AppViewModel: ObservableObject {
         }
         refreshActiveEmail()
         applyAssumedResets()
-        startAutoRefresh()
-        startStateMaintenance()
+        startHealthChecks()
+        startMaintenance()
         startAuthWatcher()
         startLogWatcher()
         startStateWatcher()
+        refreshFromLogs()
     }
 
     var activeAccount: AccountRecord? {
@@ -89,7 +90,6 @@ final class AppViewModel: ObservableObject {
         isRefreshing = true
         lastError = nil
         let authURL = defaultAuthURL()
-        let logsURL = defaultLogsURL()
 
         Task {
             defer {
@@ -109,12 +109,13 @@ final class AppViewModel: ObservableObject {
                     return
                 }
                 let cutoff = authChangeCutoff
-                let event = try await Task.detached(priority: .utility) {
-                    let parser = SessionLogParser()
-                    return try parser.latestTokenCountEvent(in: logsURL, since: cutoff)
-                }.value
+                guard let latestEvent = try await logIngestor.refreshLatestLogFile(cutoff: cutoff) else {
+                    lastError = "No usage data yet for active account. Run /status once."
+                    persist()
+                    return
+                }
 
-                guard let primary = event.primary, let secondary = event.secondary else {
+                guard let primary = latestEvent.primary, let secondary = latestEvent.secondary else {
                     lastError = "Usage data missing in logs."
                     attemptForcedRefresh(for: identity.email, hasAuth: true)
                     persist()
@@ -136,7 +137,7 @@ final class AppViewModel: ObservableObject {
                     isStale: false,
                     assumedReset: false
                 )
-                let snapshot = RateLimitsSnapshot(capturedAt: event.timestamp, fiveHour: fiveHour, weekly: weekly, source: .sessionLog)
+                let snapshot = RateLimitsSnapshot(capturedAt: latestEvent.timestamp, fiveHour: fiveHour, weekly: weekly, source: .sessionLog)
                 state.accounts[accountIndex].lastSnapshot = snapshot
                 state.accounts[accountIndex].lastUpdated = Date()
                 state.lastRefresh = Date()
@@ -226,28 +227,27 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    private func startAutoRefresh() {
-        refreshTimer?.invalidate()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
+    private func startHealthChecks() {
+        healthTimer?.invalidate()
+        healthTimer = Timer.scheduledTimer(withTimeInterval: healthCheckInterval, repeats: true) { [weak self] _ in
             guard let self else { return }
             Task { @MainActor in
                 self.refreshFromLogs()
             }
         }
-        refreshTimer?.tolerance = refreshInterval * 0.1
-        refreshFromLogs()
+        healthTimer?.tolerance = max(60, healthCheckInterval * 0.2)
     }
 
-    private func startStateMaintenance() {
-        stateTimer?.invalidate()
-        stateTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+    private func startMaintenance() {
+        maintenanceTimer?.invalidate()
+        maintenanceTimer = Timer.scheduledTimer(withTimeInterval: 60 * 60, repeats: true) { [weak self] _ in
             guard let self else { return }
             Task { @MainActor in
                 self.applyAssumedResets()
                 self.evaluateWeeklyResetReminders()
             }
         }
-        stateTimer?.tolerance = 6
+        maintenanceTimer?.tolerance = 10 * 60
     }
 
     private func startAuthWatcher() {
@@ -295,15 +295,12 @@ final class AppViewModel: ObservableObject {
 
     private func handleLogChange(_ fileURL: URL?) {
         let now = Date()
-        if let last = lastLogRefresh, now.timeIntervalSince(last) < 5 {
-            return
-        }
-        if let fileURL, fileURL == lastLogFileProcessed {
+        if let last = lastLogRefresh, now.timeIntervalSince(last) < 1 {
             return
         }
         lastLogRefresh = now
-        lastLogFileProcessed = fileURL
-        refreshFromLogs()
+        guard let fileURL else { return }
+        ingestLogUpdate(from: fileURL)
     }
 
     private func handleStateChange() {
@@ -322,6 +319,51 @@ final class AppViewModel: ObservableObject {
         }
         if let activeEmail = state.activeEmail {
             applyHelloAssumptionIfNeeded(for: activeEmail)
+        }
+    }
+
+    private func ingestLogUpdate(from fileURL: URL) {
+        guard let activeEmail = state.activeEmail else {
+            refreshFromLogs()
+            return
+        }
+        guard let accountIndex = state.accounts.firstIndex(where: { $0.email == activeEmail }) else { return }
+
+        let cutoff = authChangeCutoff
+        Task {
+            do {
+                guard let latestEvent = try await logIngestor.ingest(fileURL: fileURL, cutoff: cutoff) else { return }
+                guard let primary = latestEvent.primary, let secondary = latestEvent.secondary else { return }
+
+                let fiveHour = UsageWindow(
+                    kind: .fiveHour,
+                    usedPercent: primary.usedPercent,
+                    windowMinutes: primary.windowMinutes,
+                    resetsAt: primary.resetsAt,
+                    isStale: false,
+                    assumedReset: false
+                )
+                let weekly = UsageWindow(
+                    kind: .weekly,
+                    usedPercent: secondary.usedPercent,
+                    windowMinutes: secondary.windowMinutes,
+                    resetsAt: secondary.resetsAt,
+                    isStale: false,
+                    assumedReset: false
+                )
+                let snapshot = RateLimitsSnapshot(capturedAt: latestEvent.timestamp, fiveHour: fiveHour, weekly: weekly, source: .sessionLog)
+                if state.accounts[accountIndex].lastSnapshot?.capturedAt == snapshot.capturedAt {
+                    return
+                }
+                state.accounts[accountIndex].lastSnapshot = snapshot
+                state.accounts[accountIndex].lastUpdated = Date()
+                state.lastRefresh = Date()
+                lastRefreshSource = snapshot.source
+                persist()
+                evaluateNotifications(for: state.accounts[accountIndex])
+            } catch {
+                return
+            }
         }
     }
 
@@ -491,5 +533,6 @@ private extension URL {
 }
 
 private extension AppViewModel {
-    static let defaultRefreshInterval: TimeInterval = 300
+    static let defaultHealthCheckInterval: TimeInterval = 60 * 60
+    static let logTailBytes: Int = 256 * 1024
 }

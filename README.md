@@ -24,7 +24,8 @@ open .build/CodexHudApp.app
 ### Automation (daily hello)
 ```
 cd /Users/Mustafa/DevFiles/Mac\ Apps/codex-hud
-swift run --configuration release CodexHudAutomation --daily-hello
+./scripts/build-app.sh
+./scripts/run-daily-hello.sh
 ```
 
 ## Automation Scheduling
