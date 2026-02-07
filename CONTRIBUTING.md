@@ -23,13 +23,6 @@ swift test
 4. Open a PR and complete the checklist.
 5. Wait for CI + review before merge.
 
-## Repository Protection (Maintainer Setup)
-Enable branch protection on `master` in GitHub settings:
-- Require a pull request before merging.
-- Require approvals (at least 1).
-- Restrict direct pushes to admins/maintainers only.
-- Disable force pushes and deletions on `master`.
-
 ## Licensing and Contributions
 - By submitting a contribution, you agree your contribution is licensed under this repository's license (`PolyForm-Noncommercial-1.0.0`).
 - Commercial rights are not granted by contribution; see `COMMERCIAL-LICENSE.md`.
