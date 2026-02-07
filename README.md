@@ -116,3 +116,10 @@ docs/images/           # README assets
 - Single-user, local machine workflow.
 - No credential management or account switching automation.
 - No cloud sync or multi-device state sharing.
+
+## License
+This project is licensed under `PolyForm-Noncommercial-1.0.0`. See `LICENSE`.
+
+Commercial use is not permitted under this license. If you need a commercial license, see `COMMERCIAL-LICENSE.md`.
+
+This repository also includes a required attribution notice in `NOTICE`. If you redistribute this software, preserve that notice and provide this license text or URL as required by the license.
