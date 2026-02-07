@@ -10,3 +10,16 @@ xcuserdata/
 *.swp
 *.log
 .vscode/
+
+# Local environment and secret material
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+*.key
+*.crt
+*.cer
+id_rsa
+id_ed25519
