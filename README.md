@@ -1,6 +1,6 @@
 # Codex HUD
 
-Codex HUD is a private macOS menu bar application for managing Codex usage across five accounts. It ingests local Codex session data, models usage state with strongly typed domain logic, and recommends the next account to use based on weekly reset timing and remaining capacity.
+Codex HUD is a macOS menu bar application for managing Codex usage across accounts. It ingests local Codex session data, models usage state with strongly typed domain logic, and recommends the next account to use based on weekly reset timing and remaining capacity.
 
 <p align="center">
   <img src="docs/images/codex-hud-menu.png" alt="Codex HUD menu bar popover showing account status, weekly usage, and recommendation" width="560" />
