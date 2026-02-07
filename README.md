@@ -66,21 +66,27 @@ Codex HUD is a macOS menu bar application for managing Codex usage across accoun
 - Swift 6.2 toolchain (Xcode 16+ recommended)
 - Codex CLI installed and authenticated (`~/.codex` present)
 
-## Quick Start
+## Install and Run (First Time)
+Clone and launch in one flow:
 ```bash
-./scripts/run-app.sh
+git clone https://github.com/Capedbitmap/codex-hud.git
+cd codex-hud
+./scripts/install-and-run.sh
 ```
 
-## Build and Install
-Build app bundle:
+What this does:
+- Builds the app from source.
+- Installs it to `~/Applications/CodexHudApp.app`.
+- Opens the app after install.
+
+If you only want to install without launching:
 ```bash
-./scripts/build-app.sh
-open .build/CodexHudApp.app
+./scripts/install-and-run.sh --no-open
 ```
 
-Install into `~/Applications`:
+## Daily Use
+After first install, launch from Finder (`~/Applications/CodexHudApp.app`) or run:
 ```bash
-./scripts/install-app.sh
 open ~/Applications/CodexHudApp.app
 ```
 
@@ -88,6 +94,24 @@ open ~/Applications/CodexHudApp.app
 1. Open **Settings** from the popover.
 2. Map `Codex 2` through `Codex 6` to unique account emails.
 3. Enable notifications if needed.
+
+If account/usage data is empty, confirm Codex CLI is installed and authenticated (`~/.codex/auth.json` exists).
+
+## Development Scripts
+Build app bundle only:
+```bash
+./scripts/build-app.sh
+```
+
+Build and run from `.build`:
+```bash
+./scripts/run-app.sh
+```
+
+Install/update app in `~/Applications` without opening:
+```bash
+./scripts/install-app.sh
+```
 
 ## Development and Verification
 Run tests:
