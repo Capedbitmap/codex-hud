@@ -1,92 +1,118 @@
 # Codex HUD
 
-Private macOS menu bar app for tracking Codex usage across five accounts. It reads local Codex session logs, persists account state locally, recommends which account to use next, and can send a minimal headless message to start the 5‑hour window early.
+Codex HUD is a private macOS menu bar application for managing Codex usage across five accounts. It ingests local Codex session data, models usage state with strongly typed domain logic, and recommends the next account to use based on weekly reset timing and remaining capacity.
+
+<p align="center">
+  <img src="docs/images/codex-hud-menu.png" alt="Codex HUD menu bar popover showing account status, weekly usage, and recommendation" width="560" />
+</p>
+
+## Why This Exists
+- Codex usage constraints are multi-windowed and account-scoped.
+- Weekly capacity is the highest-value resource and should drive switching decisions.
+- Manual tracking across accounts is error-prone and wastes reset opportunities.
+- A local-first desktop assistant gives immediate visibility without introducing backend risk.
+
+## Core Capabilities
+- Weekly-first dashboard with 5-hour context for the active account.
+- Automatic active-account detection from local auth state.
+- Incremental ingestion of `token_count` events from Codex session logs.
+- Deterministic recommendation engine with stickiness and reset-aware prioritization.
+- Notification evaluation on threshold crossings (`30%`, `15%`, `5%` remaining).
+- Local persistence with migration and backup safeguards.
+
+## Architecture Overview
+`CodexHudCore` owns domain behavior and policy logic.
+`CodexHudApp` owns presentation, orchestration, and system integrations.
+`CodexHudAutomation` is an optional executable for scheduled policy actions.
+
+### Data Flow
+```text
+~/.codex/auth.json + ~/.codex/sessions/**/rollout-*.jsonl
+            |
+            v
+   AuthDecoder + SessionLogIngestor
+            |
+            v
+   CodexHudCore domain models/policies
+            |
+            v
+   AppStateStore (Application Support/state.json)
+            |
+            v
+ AppViewModel + NotificationManager + SwiftUI Menu UI
+```
+
+## Design Choices
+- Local-first ingestion over API polling: eliminates external dependencies and privacy exposure while keeping latency low.
+- Strong typing at domain boundaries: `Percent`, usage-window models, and evaluators reduce invalid state propagation.
+- Policy-driven decision engines: recommendation, notifications, refresh gating, and reminders are explicit and testable.
+- Event-driven refresh with safety net: file watchers provide immediate updates; periodic health checks prevent drift.
+- Deterministic recommendation ordering: earliest weekly reset first, with clear tie-breaking on remaining capacity.
+- Resilient storage lifecycle: atomic writes, backup rotation, and migration handling protect continuity.
+
+## Reliability and Operational Behavior
+- Reads only the newest relevant log window through tail-based and incremental parsers.
+- Applies assumed reset logic when a stored reset passes while fresh logs are unavailable.
+- Debounces repeated threshold notifications by keeping a notification ledger in state.
+- Isolates automation decisions behind cooldown and window policies to avoid runaway behavior.
+
+## Privacy and Security
+- All state stays local in `~/Library/Application Support/<bundle-id>/state.json`.
+- No telemetry, no analytics, no external service dependencies.
+- Tokens are not persisted by this app; JWT data is decoded in memory only for identity derivation.
 
 ## Requirements
-- macOS 14+ (Sonoma/Sequoia preferred)
-- Xcode command line tools
-- Codex CLI installed and authenticated (`~/.codex` populated)
+- macOS 15+
+- Swift 6.2 toolchain (Xcode 16+ recommended)
+- Codex CLI installed and authenticated (`~/.codex` present)
 
-## Build & Run
-
-### App (menu bar)
-```
-cd /Users/Mustafa/DevFiles/Mac\ Apps/codex-hud
+## Quick Start
+```bash
 ./scripts/run-app.sh
 ```
 
-Build only (creates `.build/CodexHudApp.app`):
-```
+## Build and Install
+Build app bundle:
+```bash
 ./scripts/build-app.sh
 open .build/CodexHudApp.app
 ```
 
-### Automation (daily hello)
-```
-cd /Users/Mustafa/DevFiles/Mac\ Apps/codex-hud
-./scripts/build-app.sh
-./scripts/run-daily-hello.sh
-```
-
-## Automation Scheduling
-We use a LaunchAgent to trigger the headless "hi" message (non‑interactive Codex). The guardrails in the automation binary ensure we never exceed limits.
-
-Install (from repo root):
-```
-launchctl unload ~/Library/LaunchAgents/com.mustafa.codexhud.hello.plist 2>/dev/null || true
-cp LaunchAgents/com.mustafa.codexhud.hello.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.mustafa.codexhud.hello.plist
+Install into `~/Applications`:
+```bash
+./scripts/install-app.sh
+open ~/Applications/CodexHudApp.app
 ```
 
-Uninstall:
-```
-launchctl unload ~/Library/LaunchAgents/com.mustafa.codexhud.hello.plist
-rm ~/Library/LaunchAgents/com.mustafa.codexhud.hello.plist
-```
+## Configuration
+1. Open **Settings** from the popover.
+2. Map `Codex 2` through `Codex 6` to unique account emails.
+3. Enable notifications if needed.
 
-## Headless "Hello" Guardrails (must‑pass)
-- Only runs **between 6:00 AM–8:00 PM** local time.
-- **Max 3 sends per day** per active account.
-- **Minimum 4 hours between sends**.
-- **Skip** if weekly remaining is **≤ 5%**.
-- **Skip** if 5‑hour window already started (used% > 0, after 6am snapshot).
-- **No retry loops**; a failure counts toward the daily cap.
-- UI will show **Hello sent HH:MM** and mark 5‑hour resets as **assumed** until logs confirm.
-
-## Usage Thresholds
-- **Caution:** ≤ 30%
-- **Warning:** ≤ 15%
-- **Critical:** ≤ 5%
-
-## Weekly Reset Reminders
-- If a weekly reset is **assumed** (based on stored reset time) and usage is still **0%**, we notify.
-- Reminders repeat **every 5 hours between 9:00 AM–10:00 PM** until the weekly window starts.
-- Active account is excluded; only other accounts are reminded.
-
-## Weekly Reset Reminders
-- If a weekly reset is **assumed** (based on stored reset time) and usage is still **0%**, we notify.
-- Reminders repeat **every 5 hours between 9:00 AM–10:00 PM** until the weekly window starts.
-- Active account is excluded; only other accounts are reminded.
-
-## Linting (optional but recommended)
-```
-scripts/lint.sh
-```
-This runs `swiftlint` and `swiftformat` if installed.
-
-## Environment Overrides
-- `CODEX_BIN` — absolute path to the Codex CLI if `which codex` is not available in LaunchAgent context.
-- `CODEX_HUD_HELLO_MODEL` — override the default model (`gpt-5.1-codex-mini`).
-
-Example:
-```
-launchctl setenv CODEX_BIN /usr/local/bin/codex
-launchctl setenv CODEX_HUD_HELLO_MODEL gpt-5.1-codex-mini
+## Development and Verification
+Run tests:
+```bash
+swift test
 ```
 
-## Notes / Troubleshooting
-- If `codex exec` fails with permission errors, fix ownership:
+Run lint/format checks (if installed):
+```bash
+./scripts/lint.sh
 ```
-sudo chown -R $(whoami) /Users/Mustafa/.codex
+
+## Project Layout
+```text
+Sources/
+  CodexHudCore/        # Domain models, parsing, recommendation, policy evaluators, storage
+  CodexHudApp/         # Menu bar UI, view model, file watchers, notifications
+  CodexHudAutomation/  # Optional scheduled automation entry point
+Tests/
+  CodexHudCoreTests/   # Parser, recommendation, scheduling, state, and notification tests
+scripts/               # Build, run, install, lint utilities
+docs/images/           # README assets
 ```
-- Logs are local only; no telemetry is sent.
+
+## Scope Boundaries
+- Single-user, local machine workflow.
+- No credential management or account switching automation.
+- No cloud sync or multi-device state sharing.
