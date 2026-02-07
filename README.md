@@ -18,6 +18,7 @@ Codex HUD is a macOS menu bar application for managing Codex usage across accoun
 - Incremental ingestion of `token_count` events from Codex session logs.
 - Deterministic recommendation engine with stickiness and reset-aware prioritization.
 - Notification evaluation on threshold crossings (`30%`, `15%`, `5%` remaining).
+- Optional headless automation to send a minimal Codex message (`"hi"`) for timer kick-off and refresh recovery.
 - Local persistence with migration and backup safeguards.
 
 ## Architecture Overview
@@ -97,6 +98,41 @@ open ~/Applications/CodexHudApp.app
 
 If account/usage data is empty, confirm Codex CLI is installed and authenticated (`~/.codex/auth.json` exists).
 
+## Headless Automation (Optional)
+Start 5-hour countdown automation manually:
+```bash
+./scripts/run-daily-hello.sh --daily-hello
+```
+
+Run weekly-aware forced refresh manually:
+```bash
+./scripts/run-forced-refresh.sh
+```
+
+Daily hello (`--daily-hello`) sends `"hi"` only when all policy checks pass:
+- Time window is 06:00-20:00 local time.
+- Maximum 3 sends per day.
+- Minimum 4 hours since the previous send.
+- 5-hour window has not already started for the active account.
+- Weekly remaining is above depleted threshold.
+
+Forced refresh (`--forced-refresh`) sends `"hi"` only when all policy checks pass:
+- Weekly remaining is above depleted threshold.
+- At least 12 hours since previous forced-refresh attempt.
+- No forced-refresh failure in the last 24 hours.
+
+Install a launch agent for scheduled daily hello:
+```bash
+./scripts/install-launch-agent.sh
+```
+
+Remove that launch agent:
+```bash
+./scripts/install-launch-agent.sh --unload
+```
+
+Default automation model is `gpt-5.1-codex-mini`. Override with `CODEX_HUD_HELLO_MODEL`.
+
 ## Development Scripts
 Build app bundle only:
 ```bash
@@ -111,6 +147,12 @@ Build and run from `.build`:
 Install/update app in `~/Applications` without opening:
 ```bash
 ./scripts/install-app.sh
+```
+
+Install or remove launchd automation:
+```bash
+./scripts/install-launch-agent.sh
+./scripts/install-launch-agent.sh --unload
 ```
 
 ## Development and Verification
@@ -133,6 +175,8 @@ Sources/
 Tests/
   CodexHudCoreTests/   # Parser, recommendation, scheduling, state, and notification tests
 scripts/               # Build, run, install, lint utilities
+LaunchAgents/          # launchd template(s) for optional automation
+.github/               # CI, CODEOWNERS, and PR template
 docs/images/           # README assets
 ```
 
@@ -141,9 +185,12 @@ docs/images/           # README assets
 - No credential management or account switching automation.
 - No cloud sync or multi-device state sharing.
 
+## Contributing
+Contributions are welcome via pull requests. See `CONTRIBUTING.md` for workflow, required checks, and branch-protection recommendations.
+
 ## License
 This project is licensed under `PolyForm-Noncommercial-1.0.0`. See `LICENSE`.
 
-Commercial use is not permitted under this license. If you need a commercial license, see `COMMERCIAL-LICENSE.md`.
+Commercial use is not permitted under this license. If you need a commercial license, see `COMMERCIAL-LICENSE.md` or contact `warm_doublet1b@icloud.com`.
 
 This repository also includes a required attribution notice in `NOTICE`. If you redistribute this software, preserve that notice and provide this license text or URL as required by the license.

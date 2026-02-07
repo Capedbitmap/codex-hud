@@ -2,7 +2,7 @@
 
 ## Project Purpose
 This repo builds a private macOS menu bar app for tracking Codex usage across five accounts.
-The source of truth for requirements is `PRD.md`.
+The source of truth for current public requirements is `README.md` and supporting docs under `docs/`.
 
 ## Engineering Standards
 - Prefer clarity, modularity, and minimal coupling.
