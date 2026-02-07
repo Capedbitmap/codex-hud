@@ -21,28 +21,6 @@ Codex HUD is a macOS menu bar application for managing Codex usage across accoun
 - Optional headless automation to send a minimal Codex message (`"hi"`) for timer kick-off and refresh recovery.
 - Local persistence with migration and backup safeguards.
 
-## Architecture Overview
-`CodexHudCore` owns domain behavior and policy logic.
-`CodexHudApp` owns presentation, orchestration, and system integrations.
-`CodexHudAutomation` is an optional executable for scheduled policy actions.
-
-### Data Flow
-```text
-~/.codex/auth.json + ~/.codex/sessions/**/rollout-*.jsonl
-            |
-            v
-   AuthDecoder + SessionLogIngestor
-            |
-            v
-   CodexHudCore domain models/policies
-            |
-            v
-   AppStateStore (Application Support/state.json)
-            |
-            v
- AppViewModel + NotificationManager + SwiftUI Menu UI
-```
-
 ## Design Choices
 - Local-first ingestion over API polling: eliminates external dependencies and privacy exposure while keeping latency low.
 - Strong typing at domain boundaries: `Percent`, usage-window models, and evaluators reduce invalid state propagation.
@@ -97,6 +75,28 @@ open ~/Applications/CodexHudApp.app
 3. Enable notifications if needed.
 
 If account/usage data is empty, confirm Codex CLI is installed and authenticated (`~/.codex/auth.json` exists).
+
+## Architecture Overview
+`CodexHudCore` owns domain behavior and policy logic.
+`CodexHudApp` owns presentation, orchestration, and system integrations.
+`CodexHudAutomation` is an optional executable for scheduled policy actions.
+
+### Data Flow
+```text
+~/.codex/auth.json + ~/.codex/sessions/**/rollout-*.jsonl
+            |
+            v
+   AuthDecoder + SessionLogIngestor
+            |
+            v
+   CodexHudCore domain models/policies
+            |
+            v
+   AppStateStore (Application Support/state.json)
+            |
+            v
+ AppViewModel + NotificationManager + SwiftUI Menu UI
+```
 
 ## Headless Automation (Optional)
 Start 5-hour countdown automation manually:
