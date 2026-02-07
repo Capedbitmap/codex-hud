@@ -15,3 +15,5 @@ Open a private inquiry with the repository owner and include:
 - Desired term and support expectations
 
 No commercial rights are granted unless and until a separate written agreement is executed.
+
+Contact: `warm_doublet1b@icloud.com`
