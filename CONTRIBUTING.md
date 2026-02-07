@@ -27,7 +27,6 @@ swift test
 Enable branch protection on `master` in GitHub settings:
 - Require a pull request before merging.
 - Require approvals (at least 1).
-- Require status checks to pass (`Swift CI`).
 - Restrict direct pushes to admins/maintainers only.
 - Disable force pushes and deletions on `master`.
 
