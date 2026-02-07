@@ -3,11 +3,12 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.mustafa.codexhud.hello</string>
+    <string>__LABEL__</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/bin/zsh</string>
-        <string>/Users/Mustafa/DevFiles/Mac Apps/codex-hud/scripts/run-daily-hello.sh</string>
+        <string>/bin/bash</string>
+        <string>__RUN_SCRIPT__</string>
+        <string>--daily-hello</string>
     </array>
     <key>StartCalendarInterval</key>
     <array>
@@ -37,9 +38,9 @@
         </dict>
     </array>
     <key>StandardOutPath</key>
-    <string>/tmp/codex-hud-hello.log</string>
+    <string>__LOG_OUT__</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/codex-hud-hello.err</string>
+    <string>__LOG_ERR__</string>
     <key>RunAtLoad</key>
     <true/>
 </dict>
