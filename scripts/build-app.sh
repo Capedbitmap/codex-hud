@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 APP_NAME="${APP_NAME:-CodexHudApp}"
 DISPLAY_NAME="${DISPLAY_NAME:-Codex HUD}"
-BUNDLE_ID="${BUNDLE_ID:-com.mustafa.codexhud}"
+BUNDLE_ID="${BUNDLE_ID:-io.github.capedbitmap.codexhud}"
 CONFIGURATION="${CONFIGURATION:-release}"
 VERSION="${VERSION:-0.1}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"

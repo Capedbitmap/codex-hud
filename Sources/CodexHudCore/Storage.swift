@@ -18,7 +18,7 @@ public struct AppStateStore {
         guard let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             throw StorageError.directoryUnavailable
         }
-        let resolvedIdentifier = appIdentifier ?? Bundle.main.bundleIdentifier ?? "com.mustafa.codexhud"
+        let resolvedIdentifier = appIdentifier ?? Bundle.main.bundleIdentifier ?? "io.github.capedbitmap.codexhud"
         let dir = base.appendingPathComponent(resolvedIdentifier, isDirectory: true)
         if !fm.fileExists(atPath: dir.path) {
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -107,14 +107,7 @@ private enum StorageMigration {
     static func migrateStateIfNeeded(into targetFile: URL, baseDirectory: URL, preferredIdentifier: String) throws {
         let fm = FileManager.default
 
-        let legacyIdentifiers = ["com.mustafa.codexhud", "com.mustafa.codex-hud"]
-        let legacyFiles = legacyIdentifiers
-            .filter { $0 != preferredIdentifier }
-            .map { id in
-                baseDirectory
-                    .appendingPathComponent(id, isDirectory: true)
-                    .appendingPathComponent("state.json")
-            }
+        let legacyFiles = discoverLegacyStateFiles(baseDirectory: baseDirectory, preferredIdentifier: preferredIdentifier)
 
         let targetExists = fm.fileExists(atPath: targetFile.path)
         let targetAccounts = targetExists ? (stateAccountCount(at: targetFile) ?? 0) : 0
@@ -163,6 +156,16 @@ private enum StorageMigration {
               let dict = obj as? [String: Any] else { return nil }
         let accounts = dict["accounts"] as? [Any]
         return accounts?.count
+    }
+
+    private static func discoverLegacyStateFiles(baseDirectory: URL, preferredIdentifier: String) -> [URL] {
+        let fm = FileManager.default
+        let identifierMatches = (try? fm.contentsOfDirectory(at: baseDirectory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]))?
+            .filter { $0.hasDirectoryPath }
+            .filter { $0.lastPathComponent != preferredIdentifier }
+            .filter { $0.lastPathComponent.lowercased().contains("codexhud") || $0.lastPathComponent.lowercased().contains("codex-hud") } ?? []
+
+        return identifierMatches.map { $0.appendingPathComponent("state.json") }
     }
 }
 
