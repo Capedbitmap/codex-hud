@@ -24,6 +24,7 @@ struct TokenCountEventLineParser {
         guard let timestamp = parseTimestamp(timestampRaw) else { return nil }
         guard let payload = dict["payload"] as? [String: Any] else { return nil }
         guard let rateLimits = payload["rate_limits"] as? [String: Any] else { return nil }
+        guard isPrimaryCodexLimit(rateLimits) else { return nil }
         let primary = parseRateLimit(rateLimits["primary"])
         let secondary = parseRateLimit(rateLimits["secondary"])
         return TokenCountEvent(timestamp: timestamp, primary: primary, secondary: secondary)
@@ -45,6 +46,16 @@ struct TokenCountEventLineParser {
         return RateLimit(usedPercent: usedPercent, windowMinutes: Int(windowMinutes), resetsAt: resetDate)
     }
 
+    private func isPrimaryCodexLimit(_ rateLimits: [String: Any]) -> Bool {
+        if let limitID = string(rateLimits["limit_id"]) {
+            return limitID == "codex"
+        }
+        if let limitName = string(rateLimits["limit_name"]) {
+            return !limitName.localizedCaseInsensitiveContains("spark")
+        }
+        return true
+    }
+
     private func number(_ value: Any?) -> Double? {
         if let number = value as? NSNumber {
             return number.doubleValue
@@ -57,5 +68,14 @@ struct TokenCountEventLineParser {
         }
         return nil
     }
-}
 
+    private func string(_ value: Any?) -> String? {
+        if let string = value as? String {
+            return string
+        }
+        if let number = value as? NSNumber {
+            return number.stringValue
+        }
+        return nil
+    }
+}
