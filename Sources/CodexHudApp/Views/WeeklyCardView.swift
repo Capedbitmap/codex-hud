@@ -33,7 +33,7 @@ struct WeeklyCardView: View {
                             let details = resetDetails("weekly", date: weekly.resetsAt)
                             let countdown = countdownString(to: weekly.resetsAt)
                             Text("Resets \(formatDate(weekly.resetsAt))")
-                                .font(Typography.meta)
+                                .font(Typography.label)
                                 .foregroundStyle(Theme.muted)
                                 .help(details)
                             Text("In \(countdown)")

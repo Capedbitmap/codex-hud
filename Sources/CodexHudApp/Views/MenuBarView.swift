@@ -24,7 +24,7 @@ struct MenuBarView: View {
             RecommendationView(viewModel: viewModel)
 
             FooterActionsView(
-                refreshAction: { viewModel.refreshFromLogs() },
+                refreshAction: { viewModel.refreshFromLogs(force: true) },
                 settingsAction: { SettingsWindowController.shared.show(viewModel: viewModel) },
                 quitAction: { NSApp.terminate(nil) }
             )

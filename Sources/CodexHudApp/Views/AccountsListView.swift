@@ -290,20 +290,26 @@ private struct AccountHoverDetail: View {
             }
 
             if let weeklyResetDate {
-                Text("Resets \(formatDate(weeklyResetDate))")
-                    .font(Typography.meta)
-                    .foregroundStyle(Theme.muted)
+                HoverResetSection(
+                    title: "Weekly reset",
+                    systemImage: "clock",
+                    resetsAt: weeklyResetDate,
+                    now: now
+                )
             } else {
-                Text("Resets —")
+                Text("Weekly reset —")
                     .font(Typography.meta)
                     .foregroundStyle(Theme.muted)
             }
 
             if let fiveHourResetDate {
-                let assumed = fiveHourAssumed ? " (assumed)" : ""
-                Text("5-hour resets\(assumed) \(formatDate(fiveHourResetDate))")
-                    .font(Typography.meta)
-                    .foregroundStyle(Theme.muted)
+                let title = fiveHourAssumed ? "5-hour reset (assumed)" : "5-hour reset"
+                HoverResetSection(
+                    title: title,
+                    systemImage: "timer",
+                    resetsAt: fiveHourResetDate,
+                    now: now
+                )
             }
         }
     }
@@ -360,5 +366,47 @@ private struct HoverMetricRow: View {
                     }
                 }
         }
+    }
+}
+
+private struct HoverResetSection: View {
+    let title: String
+    let systemImage: String
+    let resetsAt: Date
+    let now: Date
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(Theme.muted)
+                Text(title)
+                    .font(Typography.meta)
+                    .foregroundStyle(Theme.muted)
+            }
+            Text(formatDate(resetsAt))
+                .font(Typography.label)
+                .foregroundStyle(Theme.secondary)
+            Text("In \(countdownString(to: resetsAt, now: now))")
+                .font(Typography.caption)
+                .foregroundStyle(Theme.muted)
+        }
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
+    private func countdownString(to date: Date, now: Date) -> String {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.day, .hour, .minute]
+        formatter.unitsStyle = .abbreviated
+        formatter.maximumUnitCount = 2
+        formatter.zeroFormattingBehavior = .dropAll
+        return formatter.string(from: now, to: date) ?? "soon"
     }
 }

@@ -86,7 +86,7 @@ final class AppViewModel: ObservableObject {
         return state.dailyHelloRecords[activeEmail]?.lastRun
     }
 
-    func refreshFromLogs() {
+    func refreshFromLogs(force: Bool = false) {
         guard !isRefreshing else { return }
         isRefreshing = true
         lastError = nil
@@ -109,8 +109,7 @@ final class AppViewModel: ObservableObject {
                     persist()
                     return
                 }
-                let cutoff = authChangeCutoff
-                guard let latestEvent = try await logIngestor.refreshLatestLogFile(cutoff: cutoff) else {
+                guard let latestEvent = try await tokenCountEventForRefresh(accountIndex: accountIndex, force: force) else {
                     lastError = "No usage data yet for active account. Run /status once."
                     persist()
                     return
@@ -159,6 +158,31 @@ final class AppViewModel: ObservableObject {
                 lastError = "Unable to refresh from logs."
             }
         }
+    }
+
+    private func tokenCountEventForRefresh(accountIndex: Int, force: Bool) async throws -> TokenCountEvent? {
+        let preferredCutoff = force ? nil : authChangeCutoff
+        if let latestEvent = try await logIngestor.refreshLatestLogFile(cutoff: preferredCutoff) {
+            return latestEvent
+        }
+
+        guard force, authChangeCutoff != nil else {
+            return nil
+        }
+
+        guard let fallback = try await logIngestor.refreshLatestLogFile(cutoff: nil) else {
+            return nil
+        }
+
+        guard let currentSnapshot = state.accounts[accountIndex].lastSnapshot else {
+            return fallback
+        }
+
+        if fallback.timestamp <= currentSnapshot.capturedAt {
+            return nil
+        }
+
+        return fallback
     }
 
     func requestNotifications() async -> NotificationAuthorizationRequestResult {
