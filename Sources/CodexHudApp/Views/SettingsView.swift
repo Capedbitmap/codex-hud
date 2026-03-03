@@ -118,7 +118,7 @@ struct SettingsView: View {
         if viewModel.state.accounts.count == 5 {
             drafts = viewModel.state.accounts.map { AccountDraft(from: $0) }
         } else {
-            drafts = (2...6).map { AccountDraft(codexNumber: $0, email: "", displayName: "") }
+            drafts = (1...5).map { AccountDraft(codexNumber: $0, email: "", displayName: "") }
         }
     }
 

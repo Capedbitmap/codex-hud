@@ -71,7 +71,7 @@ open ~/Applications/CodexHudApp.app
 
 ## Configuration
 1. Open **Settings** from the popover.
-2. Map `Codex 2` through `Codex 6` to unique account emails.
+2. Map `Codex 1` through `Codex 5` to unique account emails.
 3. Enable notifications if needed.
 
 If account/usage data is empty, confirm Codex CLI is installed and authenticated (`~/.codex/auth.json` exists).

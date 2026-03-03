@@ -46,6 +46,7 @@ final class AppViewModel: ObservableObject {
         } else {
             state = AppState(accounts: [], activeEmail: nil, lastRefresh: nil)
         }
+        migrateCodexAccountNumbersIfNeeded()
         refreshActiveEmail()
         applyAssumedResets()
         startHealthChecks()
@@ -507,6 +508,18 @@ final class AppViewModel: ObservableObject {
         } catch {
             lastError = "Unable to persist data."
         }
+    }
+
+    private func migrateCodexAccountNumbersIfNeeded() {
+        let numbers = state.accounts.map(\.codexNumber).sorted()
+        let expected = Array(2...(numbers.count + 1))
+        guard !numbers.isEmpty, numbers == expected else { return }
+        state.accounts = state.accounts.map { account in
+            var updated = account
+            updated.codexNumber -= 1
+            return updated
+        }.sorted { $0.codexNumber < $1.codexNumber }
+        persist()
     }
 
     private func defaultLogsURL() -> URL {

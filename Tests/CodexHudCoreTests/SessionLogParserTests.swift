@@ -65,6 +65,33 @@ final class SessionLogParserTests: XCTestCase {
         XCTAssertEqual(event.secondary?.usedPercent, 91.0)
     }
 
+    func testLatestTokenCountEventSkipsRecentUnparseableFile() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let staleFile = tempDir.appendingPathComponent("stale.jsonl")
+        let activeFile = tempDir.appendingPathComponent("active.jsonl")
+
+        let staleLine = "{\"timestamp\":\"2026-03-01T07:00:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"rate_limits\":{\"limit_id\":\"codex\",\"primary\":{\"used_percent\":12.0,\"window_minutes\":300,\"resets_at\":1769000000},\"secondary\":{\"used_percent\":44.0,\"window_minutes\":10080,\"resets_at\":1769600000}}}}\n"
+        let activeLine = "{\"timestamp\":\"2026-03-01T08:00:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"message\"}}\n"
+
+        try staleLine.write(to: staleFile, atomically: true, encoding: .utf8)
+        try activeLine.write(to: activeFile, atomically: true, encoding: .utf8)
+
+        let oldDate = Date(timeIntervalSince1970: 1)
+        let recentDate = Date(timeIntervalSince1970: 2)
+        try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: staleFile.path)
+        try FileManager.default.setAttributes([.modificationDate: recentDate], ofItemAtPath: activeFile.path)
+
+        let parser = SessionLogParser()
+        let event = try parser.latestTokenCountEvent(in: tempDir)
+
+        XCTAssertEqual(event.timestamp, iso8601().date(from: "2026-03-01T07:00:00Z"))
+        XCTAssertEqual(event.primary?.usedPercent, 12.0)
+        XCTAssertEqual(event.secondary?.usedPercent, 44.0)
+    }
+
     private func iso8601() -> ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]

@@ -13,11 +13,7 @@ actor SessionLogIngestor {
     }
 
     func refreshLatestLogFile(cutoff: Date?) throws -> TokenCountEvent? {
-        let locator = SessionLogLocator(logsURL: logsURL)
-        guard let latestFile = locator.latestLogFile() else {
-            throw SessionLogError.logsNotFound
-        }
-        return try ingest(fileURL: latestFile, cutoff: cutoff)
+        return try SessionLogParser().latestTokenCountEvent(in: logsURL, since: cutoff)
     }
 
     func ingest(fileURL: URL, cutoff: Date?) throws -> TokenCountEvent? {
