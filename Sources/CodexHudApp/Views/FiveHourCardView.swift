@@ -42,7 +42,7 @@ struct FiveHourCardView: View {
                 let details = resetDetails("5-hour", date: fiveHour.resetsAt)
                 let countdown = countdownString(to: fiveHour.resetsAt)
                 Text("Resets \(formatDate(fiveHour.resetsAt))\(fiveHour.assumedReset ? " (assumed)" : "")")
-                    .font(Typography.label)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundStyle(Theme.muted)
                     .help(details)
                 Text("In \(countdown)")

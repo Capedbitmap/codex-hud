@@ -386,7 +386,7 @@ private struct HoverResetSection: View {
                     .foregroundStyle(Theme.muted)
             }
             Text(formatDate(resetsAt))
-                .font(Typography.label)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(Theme.secondary)
             Text("In \(countdownString(to: resetsAt, now: now))")
                 .font(Typography.caption)
