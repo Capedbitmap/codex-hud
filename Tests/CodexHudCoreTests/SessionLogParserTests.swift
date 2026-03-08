@@ -92,6 +92,28 @@ final class SessionLogParserTests: XCTestCase {
         XCTAssertEqual(event.secondary?.usedPercent, 44.0)
     }
 
+    func testParsesSessionMetadataFromCurrentRolloutHeader() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let fileURL = tempDir.appendingPathComponent("rollout.jsonl")
+        let content = [
+            #"{"timestamp":"2026-03-08T06:38:57.764Z","type":"session_meta","payload":{"id":"019ccc2b-a2e3-7bd0-8a2f-1830caac8366","timestamp":"2026-03-08T06:38:57.764Z","cwd":"/tmp/project","originator":"codex_cli_rs","cli_version":"0.111.0","source":"cli","model_provider":"openai"}}"#,
+            #"{"timestamp":"2026-03-08T06:46:12.504Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"limit_id":"codex","primary":{"used_percent":2.0,"window_minutes":300,"resets_at":1772969892},"secondary":{"used_percent":1.0,"window_minutes":10080,"resets_at":1773556692}}}}"#
+        ].joined(separator: "\n")
+        try content.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let parser = SessionLogParser()
+        let metadata = try parser.sessionMetadata(inFile: fileURL)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        XCTAssertEqual(metadata?.sessionID, "019ccc2b-a2e3-7bd0-8a2f-1830caac8366")
+        XCTAssertEqual(metadata?.cwd, "/tmp/project")
+        XCTAssertEqual(metadata?.startedAt, formatter.date(from: "2026-03-08T06:38:57.764Z"))
+    }
+
     private func iso8601() -> ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]

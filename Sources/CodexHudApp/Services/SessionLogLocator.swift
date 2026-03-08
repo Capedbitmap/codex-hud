@@ -10,73 +10,64 @@ struct SessionLogLocator {
     }
 
     func latestLogFile() -> URL? {
-        guard fileManager.fileExists(atPath: logsURL.path) else { return nil }
+        recentLogFiles(referenceDate: Date(), lookbackDays: 7, limit: 1).first
+    }
 
-        let rootKeys: Set<URLResourceKey> = [.isDirectoryKey, .contentModificationDateKey]
-        let childKeys: Set<URLResourceKey> = [.contentModificationDateKey, .isRegularFileKey]
+    func recentLogFiles(referenceDate: Date, lookbackDays: Int, limit: Int) -> [URL] {
+        guard fileManager.fileExists(atPath: logsURL.path) else { return [] }
+        guard limit > 0 else { return [] }
 
-        let rootItems = (try? fileManager.contentsOfDirectory(
-            at: logsURL,
-            includingPropertiesForKeys: Array(rootKeys),
-            options: [.skipsHiddenFiles]
-        )) ?? []
+        let calendar = Calendar(identifier: .gregorian)
+        let rootKeys: Set<URLResourceKey> = [.isRegularFileKey, .contentModificationDateKey]
+        var collected: [(url: URL, modifiedAt: Date)] = []
 
-        var candidateDirs: [(url: URL, modifiedAt: Date)] = []
-        var candidateFiles: [(url: URL, modifiedAt: Date)] = []
-
-        for url in rootItems {
-            let values = (try? url.resourceValues(forKeys: rootKeys))
-            let modifiedAt = values?.contentModificationDate ?? Date.distantPast
-            if values?.isDirectory == true {
-                candidateDirs.append((url, modifiedAt))
-            } else if url.pathExtension == "jsonl" {
-                candidateFiles.append((url, modifiedAt))
-            }
-        }
-
-        candidateDirs.sort { $0.modifiedAt > $1.modifiedAt }
-        candidateFiles.sort { $0.modifiedAt > $1.modifiedAt }
-
-        var newest: (url: URL, modifiedAt: Date)? = candidateFiles.first
-
-        // Typical Codex layout is sessions/<session-id>/rollout-*.jsonl. Scan only the newest few session
-        // directories to avoid walking a potentially huge history.
-        for dir in candidateDirs.prefix(25) {
+        for offset in 0..<max(lookbackDays, 1) {
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: referenceDate) else { continue }
+            let components = calendar.dateComponents([.year, .month, .day], from: day)
+            guard let year = components.year, let month = components.month, let day = components.day else { continue }
+            let dayDirectory = logsURL
+                .appendingPathComponent(String(format: "%04d", year), isDirectory: true)
+                .appendingPathComponent(String(format: "%02d", month), isDirectory: true)
+                .appendingPathComponent(String(format: "%02d", day), isDirectory: true)
+            guard fileManager.fileExists(atPath: dayDirectory.path) else { continue }
             let items = (try? fileManager.contentsOfDirectory(
-                at: dir.url,
-                includingPropertiesForKeys: Array(childKeys),
+                at: dayDirectory,
+                includingPropertiesForKeys: Array(rootKeys),
                 options: [.skipsHiddenFiles]
             )) ?? []
-            for file in items where file.pathExtension == "jsonl" {
-                let values = (try? file.resourceValues(forKeys: childKeys))
+            for item in items where item.pathExtension == "jsonl" {
+                let values = (try? item.resourceValues(forKeys: rootKeys))
                 guard values?.isRegularFile == true else { continue }
                 let modifiedAt = values?.contentModificationDate ?? Date.distantPast
-                if let current = newest {
-                    if modifiedAt > current.modifiedAt { newest = (file, modifiedAt) }
-                } else {
-                    newest = (file, modifiedAt)
-                }
+                collected.append((item, modifiedAt))
             }
         }
 
-        if newest != nil { return newest?.url }
+        if collected.isEmpty {
+            return fallbackRecentLogFiles(limit: limit)
+        }
 
-        // Fallback: recursive search (should be rare).
+        return collected
+            .sorted { $0.modifiedAt > $1.modifiedAt }
+            .prefix(limit)
+            .map(\.url)
+    }
+
+    private func fallbackRecentLogFiles(limit: Int) -> [URL] {
         let enumerator = fileManager.enumerator(
             at: logsURL,
             includingPropertiesForKeys: [.contentModificationDateKey],
             options: [.skipsHiddenFiles]
         )
+        var collected: [(url: URL, modifiedAt: Date)] = []
         while let item = enumerator?.nextObject() as? URL {
             guard item.pathExtension == "jsonl" else { continue }
             let modifiedAt = (try? item.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date.distantPast
-            if let current = newest {
-                if modifiedAt > current.modifiedAt { newest = (item, modifiedAt) }
-            } else {
-                newest = (item, modifiedAt)
-            }
+            collected.append((item, modifiedAt))
         }
-        return newest?.url
+        return collected
+            .sorted { $0.modifiedAt > $1.modifiedAt }
+            .prefix(limit)
+            .map(\.url)
     }
 }
-

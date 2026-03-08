@@ -21,13 +21,15 @@ final class AppViewModel: ObservableObject {
     private var healthTimer: Timer?
     private var maintenanceTimer: Timer?
     private var authWatcher: AuthFileWatcher?
+    private var sessionIndexWatcher: SessionIndexWatcher?
     private var logWatcher: SessionLogWatcher?
     private var stateWatcher: StateFileWatcher?
     private var lastAuthRefresh: Date?
+    private var lastSessionIndexRefresh: Date?
     private var lastLogRefresh: Date?
     private var lastStateRefresh: Date?
-    private var authChangeCutoff: Date?
     private var isRefreshing = false
+    private var pendingForceRefresh = false
 
     init(
         helloSender: HelloSending = CodexHelloSender(),
@@ -52,6 +54,7 @@ final class AppViewModel: ObservableObject {
         startHealthChecks()
         startMaintenance()
         startAuthWatcher()
+        startSessionIndexWatcher()
         startLogWatcher()
         startStateWatcher()
         refreshFromLogs()
@@ -87,7 +90,10 @@ final class AppViewModel: ObservableObject {
     }
 
     func refreshFromLogs(force: Bool = false) {
-        guard !isRefreshing else { return }
+        if isRefreshing {
+            pendingForceRefresh = pendingForceRefresh || force
+            return
+        }
         isRefreshing = true
         lastError = nil
         let authURL = defaultAuthURL()
@@ -100,51 +106,33 @@ final class AppViewModel: ObservableObject {
                 applyAssumedResets()
                 evaluateWeeklyResetReminders()
                 isRefreshing = false
+                if pendingForceRefresh {
+                    pendingForceRefresh = false
+                    refreshFromLogs(force: true)
+                }
             }
             do {
                 let identity = try authDecoder.loadActiveAccount(from: authURL)
+                let observedAt = authFileModifiedAt() ?? Date()
                 updateActiveEmail(identity.email)
+                recordAuthObservation(identity, observedAt: observedAt)
                 guard let accountIndex = state.accounts.firstIndex(where: { $0.email == identity.email }) else {
                     lastError = "Active account is not configured in Settings."
                     persist()
                     return
                 }
-                guard let latestEvent = try await tokenCountEventForRefresh(accountIndex: accountIndex, force: force) else {
+                let refreshAt = Date()
+                let changes = try await refreshSnapshots(force: force, currentIdentity: identity, observedAt: observedAt, refreshAt: refreshAt)
+                guard let activeSnapshot = state.accounts[accountIndex].lastSnapshot else {
                     lastError = "No usage data yet for active account. Run /status once."
                     persist()
                     return
                 }
-
-                guard let primary = latestEvent.primary, let secondary = latestEvent.secondary else {
-                    lastError = "Usage data missing in logs."
-                    attemptForcedRefresh(for: identity.email, hasAuth: true)
-                    persist()
-                    return
+                if changes == 0, force || activeSnapshot.source == .sessionLog {
+                    state.lastRefresh = refreshAt
+                    lastRefreshSource = .sessionLog
                 }
-                let fiveHour = UsageWindow(
-                    kind: .fiveHour,
-                    usedPercent: primary.usedPercent,
-                    windowMinutes: primary.windowMinutes,
-                    resetsAt: primary.resetsAt,
-                    isStale: false,
-                    assumedReset: false
-                )
-                let weekly = UsageWindow(
-                    kind: .weekly,
-                    usedPercent: secondary.usedPercent,
-                    windowMinutes: secondary.windowMinutes,
-                    resetsAt: secondary.resetsAt,
-                    isStale: false,
-                    assumedReset: false
-                )
-                let snapshot = RateLimitsSnapshot(capturedAt: latestEvent.timestamp, fiveHour: fiveHour, weekly: weekly, source: .sessionLog)
-                state.accounts[accountIndex].lastSnapshot = snapshot
-                state.accounts[accountIndex].lastUpdated = Date()
-                state.lastRefresh = Date()
-                lastRefreshSource = snapshot.source
-                authChangeCutoff = nil
                 persist()
-                evaluateNotifications(for: state.accounts[accountIndex])
             } catch let error as SessionLogError {
                 switch error {
                 case .noTokenCountEvents:
@@ -158,31 +146,6 @@ final class AppViewModel: ObservableObject {
                 lastError = "Unable to refresh from logs."
             }
         }
-    }
-
-    private func tokenCountEventForRefresh(accountIndex: Int, force: Bool) async throws -> TokenCountEvent? {
-        let preferredCutoff = force ? nil : authChangeCutoff
-        if let latestEvent = try await logIngestor.refreshLatestLogFile(cutoff: preferredCutoff) {
-            return latestEvent
-        }
-
-        guard force, authChangeCutoff != nil else {
-            return nil
-        }
-
-        guard let fallback = try await logIngestor.refreshLatestLogFile(cutoff: nil) else {
-            return nil
-        }
-
-        guard let currentSnapshot = state.accounts[accountIndex].lastSnapshot else {
-            return fallback
-        }
-
-        if fallback.timestamp <= currentSnapshot.capturedAt {
-            return nil
-        }
-
-        return fallback
     }
 
     func requestNotifications() async -> NotificationAuthorizationRequestResult {
@@ -233,6 +196,7 @@ final class AppViewModel: ObservableObject {
         if let activeEmail = state.activeEmail, !state.accounts.contains(where: { $0.email == activeEmail }) {
             state.activeEmail = nil
         }
+        state.sessionBindings = pruneSessionBindings(state.sessionBindings, configuredEmails: Set(state.accounts.map(\.email)))
         persist()
     }
 
@@ -243,6 +207,7 @@ final class AppViewModel: ObservableObject {
     private func refreshActiveEmail() {
         do {
             let identity = try authDecoder.loadActiveAccount(from: defaultAuthURL())
+            recordAuthObservation(identity, observedAt: authFileModifiedAt() ?? Date())
             updateActiveEmail(identity.email)
         } catch {
             return
@@ -252,7 +217,6 @@ final class AppViewModel: ObservableObject {
     private func updateActiveEmail(_ email: String) {
         if state.activeEmail != email {
             state.activeEmail = email
-            authChangeCutoff = authFileModifiedAt() ?? Date()
         }
     }
 
@@ -290,6 +254,17 @@ final class AppViewModel: ObservableObject {
         authWatcher?.start()
     }
 
+    private func startSessionIndexWatcher() {
+        sessionIndexWatcher?.stop()
+        sessionIndexWatcher = SessionIndexWatcher(fileURL: defaultSessionIndexURL()) { [weak self] in
+            guard let self else { return }
+            Task { @MainActor in
+                self.handleSessionIndexChange()
+            }
+        }
+        sessionIndexWatcher?.start()
+    }
+
     private func startLogWatcher() {
         logWatcher?.stop()
         logWatcher = SessionLogWatcher(logsURL: defaultLogsURL()) { [weak self] fileURL in
@@ -319,6 +294,15 @@ final class AppViewModel: ObservableObject {
             return
         }
         lastAuthRefresh = now
+        refreshFromLogs(force: true)
+    }
+
+    private func handleSessionIndexChange() {
+        let now = Date()
+        if let last = lastSessionIndexRefresh, now.timeIntervalSince(last) < 1 {
+            return
+        }
+        lastSessionIndexRefresh = now
         refreshFromLogs()
     }
 
@@ -328,8 +312,11 @@ final class AppViewModel: ObservableObject {
             return
         }
         lastLogRefresh = now
-        guard let fileURL else { return }
-        ingestLogUpdate(from: fileURL)
+        if fileURL == nil {
+            refreshFromLogs()
+            return
+        }
+        refreshFromLogs()
     }
 
     private func handleStateChange() {
@@ -351,48 +338,224 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    private func ingestLogUpdate(from fileURL: URL) {
-        guard let activeEmail = state.activeEmail else {
-            refreshFromLogs()
+    private func refreshSnapshots(
+        force: Bool,
+        currentIdentity: AuthAccountIdentity,
+        observedAt: Date,
+        refreshAt: Date
+    ) async throws -> Int {
+        let originalBindings = state.sessionBindings
+        let originalObservations = state.authObservations
+        let candidateFiles = await candidateLogFiles()
+        let configuredEmails = Set(state.accounts.map(\.email))
+        var bindings = state.sessionBindings
+        var latestByEmail: [String: (binding: SessionAccountBinding, event: TokenCountEvent)] = [:]
+
+        for fileURL in candidateFiles {
+            guard let metadata = try await logIngestor.sessionMetadata(in: fileURL) else { continue }
+            if let binding = resolveBinding(
+                existingBindings: bindings,
+                metadata: metadata,
+                fileURL: fileURL,
+                currentIdentity: currentIdentity,
+                observedAt: observedAt
+            ) {
+                bindings[binding.sessionID] = binding
+            }
+        }
+
+        bindings = pruneSessionBindings(bindings, configuredEmails: configuredEmails)
+        state.sessionBindings = bindings
+        pruneAuthObservations()
+
+        for binding in bindings.values where configuredEmails.contains(binding.email) {
+            let fileURL = URL(fileURLWithPath: binding.rolloutPath)
+            let cutoff = force ? nil : state.accounts.first(where: { $0.email == binding.email })?.lastSnapshot?.capturedAt
+            guard let event = try await logIngestor.latestTokenCountEvent(in: fileURL, since: cutoff) else { continue }
+            var refreshedBinding = binding
+            refreshedBinding.lastObservedAt = max(binding.lastObservedAt, event.timestamp)
+            bindings[binding.sessionID] = refreshedBinding
+            if let current = latestByEmail[binding.email] {
+                if event.timestamp > current.event.timestamp {
+                    latestByEmail[binding.email] = (refreshedBinding, event)
+                }
+            } else {
+                latestByEmail[binding.email] = (refreshedBinding, event)
+            }
+        }
+
+        state.sessionBindings = bindings
+
+        var changeCount = 0
+        var updatedAccounts: [AccountRecord] = []
+
+        for index in state.accounts.indices {
+            let email = state.accounts[index].email
+            guard let candidate = latestByEmail[email],
+                  let snapshot = snapshot(for: candidate.event) else {
+                continue
+            }
+
+            let hasMeaningfulChange = state.accounts[index].lastSnapshot != snapshot
+            guard hasMeaningfulChange || force else { continue }
+
+            state.accounts[index].lastSnapshot = snapshot
+            if hasMeaningfulChange {
+                state.accounts[index].lastUpdated = refreshAt
+                updatedAccounts.append(state.accounts[index])
+                changeCount += 1
+            }
+            state.lastRefresh = refreshAt
+            lastRefreshSource = snapshot.source
+        }
+
+        let attributionChanged = state.sessionBindings != originalBindings || state.authObservations != originalObservations
+        if changeCount > 0 || attributionChanged {
+            persist()
+        }
+
+        if changeCount > 0 {
+            for account in updatedAccounts {
+                evaluateNotifications(for: account)
+            }
+        }
+
+        return changeCount
+    }
+
+    private func candidateLogFiles() async -> [URL] {
+        let recentFiles = await logIngestor.recentLogFiles(
+            referenceDate: Date(),
+            lookbackDays: Self.sessionLookbackDays,
+            limit: Self.maxRecentLogFiles
+        )
+        var ordered: [URL] = []
+        var seenPaths: Set<String> = []
+
+        for fileURL in recentFiles {
+            guard seenPaths.insert(fileURL.path).inserted else { continue }
+            ordered.append(fileURL)
+        }
+
+        for binding in state.sessionBindings.values.sorted(by: { $0.lastObservedAt > $1.lastObservedAt }) {
+            let fileURL = URL(fileURLWithPath: binding.rolloutPath)
+            guard FileManager.default.fileExists(atPath: fileURL.path) else { continue }
+            guard seenPaths.insert(fileURL.path).inserted else { continue }
+            ordered.append(fileURL)
+        }
+
+        return ordered
+    }
+
+    private func resolveBinding(
+        existingBindings: [String: SessionAccountBinding],
+        metadata: SessionMetadata,
+        fileURL: URL,
+        currentIdentity: AuthAccountIdentity,
+        observedAt: Date
+    ) -> SessionAccountBinding? {
+        if var existing = existingBindings[metadata.sessionID] {
+            existing.rolloutPath = fileURL.path
+            existing.lastObservedAt = Date()
+            return existing
+        }
+
+        guard let observation = bestAuthObservation(for: metadata.startedAt, currentIdentity: currentIdentity, observedAt: observedAt) else {
+            return nil
+        }
+
+        return SessionAccountBinding(
+            sessionID: metadata.sessionID,
+            rolloutPath: fileURL.path,
+            email: observation.email,
+            subject: observation.subject,
+            accountId: observation.accountId,
+            startedAt: metadata.startedAt,
+            lastObservedAt: Date()
+        )
+    }
+
+    private func bestAuthObservation(
+        for sessionStartedAt: Date,
+        currentIdentity: AuthAccountIdentity,
+        observedAt: Date
+    ) -> AuthObservation? {
+        let sorted = state.authObservations.sorted { $0.observedAt < $1.observedAt }
+        if let match = sorted.last(where: { observation in
+            sessionStartedAt.timeIntervalSince(observation.observedAt) >= -Self.authObservationClockSkewGrace
+        }) {
+            return match
+        }
+
+        if sessionStartedAt.timeIntervalSince(observedAt) >= -Self.authObservationClockSkewGrace {
+            return AuthObservation(
+                email: currentIdentity.email,
+                subject: currentIdentity.subject,
+                accountId: currentIdentity.accountId,
+                observedAt: observedAt
+            )
+        }
+
+        return nil
+    }
+
+    private func snapshot(for event: TokenCountEvent) -> RateLimitsSnapshot? {
+        guard let primary = event.primary, let secondary = event.secondary else {
+            return nil
+        }
+        let fiveHour = UsageWindow(
+            kind: .fiveHour,
+            usedPercent: primary.usedPercent,
+            windowMinutes: primary.windowMinutes,
+            resetsAt: primary.resetsAt,
+            isStale: false,
+            assumedReset: false
+        )
+        let weekly = UsageWindow(
+            kind: .weekly,
+            usedPercent: secondary.usedPercent,
+            windowMinutes: secondary.windowMinutes,
+            resetsAt: secondary.resetsAt,
+            isStale: false,
+            assumedReset: false
+        )
+        return RateLimitsSnapshot(capturedAt: event.timestamp, fiveHour: fiveHour, weekly: weekly, source: .sessionLog)
+    }
+
+    private func recordAuthObservation(_ identity: AuthAccountIdentity, observedAt: Date) {
+        if let last = state.authObservations.last,
+           last.email == identity.email,
+           last.subject == identity.subject,
+           last.accountId == identity.accountId,
+           abs(last.observedAt.timeIntervalSince(observedAt)) < 1 {
             return
         }
-        guard let accountIndex = state.accounts.firstIndex(where: { $0.email == activeEmail }) else { return }
 
-        let cutoff = authChangeCutoff
-        Task {
-            do {
-                guard let latestEvent = try await logIngestor.ingest(fileURL: fileURL, cutoff: cutoff) else { return }
-                guard let primary = latestEvent.primary, let secondary = latestEvent.secondary else { return }
+        state.authObservations.append(AuthObservation(
+            email: identity.email,
+            subject: identity.subject,
+            accountId: identity.accountId,
+            observedAt: observedAt
+        ))
+        pruneAuthObservations()
+    }
 
-                let fiveHour = UsageWindow(
-                    kind: .fiveHour,
-                    usedPercent: primary.usedPercent,
-                    windowMinutes: primary.windowMinutes,
-                    resetsAt: primary.resetsAt,
-                    isStale: false,
-                    assumedReset: false
-                )
-                let weekly = UsageWindow(
-                    kind: .weekly,
-                    usedPercent: secondary.usedPercent,
-                    windowMinutes: secondary.windowMinutes,
-                    resetsAt: secondary.resetsAt,
-                    isStale: false,
-                    assumedReset: false
-                )
-                let snapshot = RateLimitsSnapshot(capturedAt: latestEvent.timestamp, fiveHour: fiveHour, weekly: weekly, source: .sessionLog)
-                if state.accounts[accountIndex].lastSnapshot?.capturedAt == snapshot.capturedAt {
-                    return
-                }
-                state.accounts[accountIndex].lastSnapshot = snapshot
-                state.accounts[accountIndex].lastUpdated = Date()
-                state.lastRefresh = Date()
-                lastRefreshSource = snapshot.source
-                persist()
-                evaluateNotifications(for: state.accounts[accountIndex])
-            } catch {
-                return
-            }
+    private func pruneAuthObservations() {
+        let cutoff = Date().addingTimeInterval(-Self.authObservationRetention)
+        state.authObservations = state.authObservations
+            .filter { $0.observedAt >= cutoff }
+            .suffix(Self.maxAuthObservations)
+    }
+
+    private func pruneSessionBindings(
+        _ bindings: [String: SessionAccountBinding],
+        configuredEmails: Set<String>
+    ) -> [String: SessionAccountBinding] {
+        let cutoff = Date().addingTimeInterval(-Self.sessionBindingRetention)
+        return bindings.filter { _, binding in
+            configuredEmails.contains(binding.email)
+                && binding.lastObservedAt >= cutoff
+                && FileManager.default.fileExists(atPath: binding.rolloutPath)
         }
     }
 
@@ -554,6 +717,10 @@ final class AppViewModel: ObservableObject {
         URL(fileURLWithPath: "~/.codex/auth.json").expandingTildeInPath
     }
 
+    private func defaultSessionIndexURL() -> URL {
+        URL(fileURLWithPath: "~/.codex/session_index.jsonl").expandingTildeInPath
+    }
+
     private func authFileModifiedAt() -> Date? {
         let url = defaultAuthURL()
         do {
@@ -578,4 +745,10 @@ private extension AppViewModel {
     // Parsing is tail-based so this is intentionally kept reasonably frequent.
     static let defaultHealthCheckInterval: TimeInterval = 5 * 60
     static let logTailBytes: Int = 256 * 1024
+    static let sessionLookbackDays: Int = 14
+    static let maxRecentLogFiles: Int = 96
+    static let maxAuthObservations: Int = 64
+    static let authObservationClockSkewGrace: TimeInterval = 5
+    static let authObservationRetention: TimeInterval = 45 * 24 * 60 * 60
+    static let sessionBindingRetention: TimeInterval = 45 * 24 * 60 * 60
 }

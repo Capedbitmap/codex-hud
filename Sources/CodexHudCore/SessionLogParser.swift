@@ -1,5 +1,11 @@
 import Foundation
 
+public struct SessionMetadata: Equatable, Sendable {
+    public let sessionID: String
+    public let startedAt: Date
+    public let cwd: String?
+}
+
 public struct RateLimit: Equatable, Sendable {
     public let usedPercent: Double
     public let windowMinutes: Int
@@ -44,7 +50,7 @@ public struct SessionLogParser {
         throw SessionLogError.noTokenCountEvents
     }
 
-    private func latestTokenCountEvent(inFile file: URL, since cutoff: Date?) throws -> TokenCountEvent? {
+    public func latestTokenCountEvent(inFile file: URL, since cutoff: Date?) throws -> TokenCountEvent? {
         let data = try String(contentsOf: file, encoding: .utf8)
         let lines = data.split(separator: "\n")
         let parser = TokenCountEventLineParser()
@@ -55,6 +61,25 @@ public struct SessionLogParser {
             }
             return event
         }
+        return nil
+    }
+
+    public func sessionMetadata(inFile file: URL) throws -> SessionMetadata? {
+        let handle = try FileHandle(forReadingFrom: file)
+        defer { try? handle.close() }
+
+        let header = try handle.read(upToCount: 16 * 1024) ?? Data()
+        guard !header.isEmpty else { return nil }
+        let lines = header.split(separator: 0x0A, omittingEmptySubsequences: false)
+        let parser = SessionMetaLineParser()
+
+        for rawLine in lines {
+            guard let line = String(data: rawLine, encoding: .utf8) else { continue }
+            if let metadata = parser.parseSessionMetadata(fromLine: line) {
+                return metadata
+            }
+        }
+
         return nil
     }
 
@@ -73,4 +98,41 @@ public struct SessionLogParser {
         }
     }
 
+}
+
+private struct SessionMetaLineParser {
+    private let formatter: ISO8601DateFormatter
+    private let fallbackFormatter: ISO8601DateFormatter
+
+    init() {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        self.formatter = formatter
+
+        let fallbackFormatter = ISO8601DateFormatter()
+        fallbackFormatter.formatOptions = [.withInternetDateTime]
+        self.fallbackFormatter = fallbackFormatter
+    }
+
+    func parseSessionMetadata(fromLine line: String) -> SessionMetadata? {
+        guard line.contains("\"type\":\"session_meta\"") else { return nil }
+        guard let data = line.data(using: .utf8) else { return nil }
+        guard let obj = try? JSONSerialization.jsonObject(with: data),
+              let dict = obj as? [String: Any],
+              let payload = dict["payload"] as? [String: Any],
+              let sessionID = payload["id"] as? String,
+              let timestampRaw = payload["timestamp"] as? String,
+              let startedAt = parseTimestamp(timestampRaw) else {
+            return nil
+        }
+        let cwd = payload["cwd"] as? String
+        return SessionMetadata(sessionID: sessionID, startedAt: startedAt, cwd: cwd)
+    }
+
+    private func parseTimestamp(_ raw: String) -> Date? {
+        if let date = formatter.date(from: raw) {
+            return date
+        }
+        return fallbackFormatter.date(from: raw)
+    }
 }

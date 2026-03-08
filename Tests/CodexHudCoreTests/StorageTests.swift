@@ -15,7 +15,26 @@ final class StorageTests: XCTestCase {
         let state = AppState(
             accounts: [AccountRecord(codexNumber: 2, email: "user@example.com", displayName: nil, lastSnapshot: snapshot, lastUpdated: fixedDate)],
             activeEmail: "user@example.com",
-            lastRefresh: fixedDate
+            lastRefresh: fixedDate,
+            sessionBindings: [
+                "session-1": SessionAccountBinding(
+                    sessionID: "session-1",
+                    rolloutPath: "/tmp/rollout-1.jsonl",
+                    email: "user@example.com",
+                    subject: "auth0|user",
+                    accountId: "acct-1",
+                    startedAt: fixedDate,
+                    lastObservedAt: fixedDate
+                )
+            ],
+            authObservations: [
+                AuthObservation(
+                    email: "user@example.com",
+                    subject: "auth0|user",
+                    accountId: "acct-1",
+                    observedAt: fixedDate
+                )
+            ]
         )
 
         try store.save(state)
