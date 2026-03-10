@@ -109,6 +109,18 @@ final class AppViewModel: ObservableObject {
         return state.dailyHelloRecords[activeEmail]?.lastRun
     }
 
+    func manualRefresh() {
+        Task { @MainActor in
+            self.refreshFromLogs(force: true)
+            try? await Task.sleep(nanoseconds: 750_000_000)
+            guard self.shouldAttemptForcedRefreshAfterScan else { return }
+            guard let activeEmail = self.state.activeEmail else { return }
+            self.attemptForcedRefresh(for: activeEmail, hasAuth: self.currentIdentity() != nil)
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            self.refreshFromLogs(force: true)
+        }
+    }
+
     func refreshFromLogs(force: Bool = false) {
         if isRefreshing {
             pendingForceRefresh = pendingForceRefresh || force
@@ -132,7 +144,7 @@ final class AppViewModel: ObservableObject {
             }
             do {
                 let observedAt = authFileModifiedAt() ?? Date()
-                let identity = try? authDecoder.loadActiveAccount(from: self.authURL)
+                let identity = currentIdentity()
                 if let identity {
                     recordAuthObservation(identity, observedAt: observedAt)
                 }
@@ -385,8 +397,20 @@ final class AppViewModel: ObservableObject {
         )
         var bindings = plan.bindings
         var latestByEmail: [String: (binding: SessionAccountBinding, event: TokenCountEvent)] = [:]
+        var latestActivityByEmail: [String: Date] = [:]
         state.sessionBindings = bindings
         pruneAuthObservations()
+
+        for thread in recentThreads {
+            guard let binding = bindings[thread.sessionID],
+                  configuredEmails.contains(binding.email) else {
+                continue
+            }
+            let current = latestActivityByEmail[binding.email] ?? .distantPast
+            if thread.updatedAt > current {
+                latestActivityByEmail[binding.email] = thread.updatedAt
+            }
+        }
 
         for binding in bindings.values where configuredEmails.contains(binding.email) {
             let fileURL = URL(fileURLWithPath: binding.rolloutPath)
@@ -416,8 +440,18 @@ final class AppViewModel: ObservableObject {
 
         for index in state.accounts.indices {
             let email = state.accounts[index].email
-            guard let candidate = latestByEmail[email],
-                  let snapshot = snapshot(for: candidate.event) else {
+            let snapshotCandidate: RateLimitsSnapshot?
+            if let candidate = latestByEmail[email],
+               let parsed = snapshot(for: candidate.event) {
+                snapshotCandidate = parsed
+            } else if let existing = state.accounts[index].lastSnapshot,
+                      let latestActivityAt = latestActivityByEmail[email] {
+                snapshotCandidate = inferredSnapshot(from: existing, latestActivityAt: latestActivityAt)
+            } else {
+                snapshotCandidate = nil
+            }
+
+            guard let snapshot = snapshotCandidate else {
                 continue
             }
 
@@ -469,6 +503,51 @@ final class AppViewModel: ObservableObject {
             assumedReset: false
         )
         return RateLimitsSnapshot(capturedAt: event.timestamp, fiveHour: fiveHour, weekly: weekly, source: .sessionLog)
+    }
+
+    private func inferredSnapshot(from existing: RateLimitsSnapshot, latestActivityAt: Date) -> RateLimitsSnapshot {
+        var fiveHour = existing.fiveHour
+        var weekly = existing.weekly
+        var capturedAt = existing.capturedAt
+        var changed = false
+
+        let shouldReanchorFiveHour = latestActivityAt > existing.capturedAt
+            && (existing.fiveHour.assumedReset || latestActivityAt > existing.fiveHour.resetsAt)
+        if shouldReanchorFiveHour {
+            let windowMinutes = max(existing.fiveHour.windowMinutes, 300)
+            fiveHour = UsageWindow(
+                kind: .fiveHour,
+                usedPercent: 0,
+                windowMinutes: windowMinutes,
+                resetsAt: latestActivityAt.addingTimeInterval(TimeInterval(windowMinutes * 60)),
+                isStale: true,
+                assumedReset: true
+            )
+            capturedAt = max(capturedAt, latestActivityAt)
+            changed = true
+        }
+
+        if latestActivityAt > existing.weekly.resetsAt {
+            let windowMinutes = max(existing.weekly.windowMinutes, 7 * 24 * 60)
+            weekly = UsageWindow(
+                kind: .weekly,
+                usedPercent: 0,
+                windowMinutes: windowMinutes,
+                resetsAt: latestActivityAt.addingTimeInterval(TimeInterval(windowMinutes * 60)),
+                isStale: true,
+                assumedReset: true
+            )
+            capturedAt = max(capturedAt, latestActivityAt)
+            changed = true
+        }
+
+        guard changed else { return existing }
+        return RateLimitsSnapshot(
+            capturedAt: capturedAt,
+            fiveHour: fiveHour,
+            weekly: weekly,
+            source: existing.source
+        )
     }
 
     private func recordAuthObservation(_ identity: AuthAccountIdentity, observedAt: Date) {
@@ -663,6 +742,19 @@ final class AppViewModel: ObservableObject {
         } catch {
             return nil
         }
+    }
+
+    private func currentIdentity() -> AuthAccountIdentity? {
+        try? authDecoder.loadActiveAccount(from: authURL)
+    }
+
+    private var shouldAttemptForcedRefreshAfterScan: Bool {
+        guard let activeEmail = state.activeEmail,
+              let account = state.accounts.first(where: { $0.email == activeEmail }),
+              let snapshot = account.lastSnapshot else {
+            return false
+        }
+        return snapshot.fiveHour.assumedReset || snapshot.weekly.assumedReset
     }
 
     private func threadActivityFiles() -> [URL] {

@@ -137,6 +137,143 @@ final class AppViewModelRefreshTests: XCTestCase {
         XCTAssertEqual(viewModel.state.sessionBindings[betaSessionID]?.email, "beta@example.com")
     }
 
+    func testRefreshInfersFiveHourResetFromNewerActivityWhenRateLimitsAreMissing() async throws {
+        let sandbox = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: sandbox, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: sandbox) }
+
+        let sessionsURL = sandbox.appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsURL, withIntermediateDirectories: true)
+        let authURL = sandbox.appendingPathComponent("auth.json")
+        let databaseURL = sandbox.appendingPathComponent("state_5.sqlite")
+        let store = AppStateStore(fileURL: sandbox.appendingPathComponent("state.json"))
+
+        let base = Date().addingTimeInterval(-300)
+        let sessionID = "session-alpha"
+        let rolloutURL = sessionsURL.appendingPathComponent("alpha.jsonl")
+
+        try writeAuthFile(
+            to: authURL,
+            email: "alpha@example.com",
+            subject: "sub-alpha",
+            accountId: "acct-alpha"
+        )
+        try writeRollout(
+            to: rolloutURL,
+            sessionID: sessionID,
+            startedAt: base.addingTimeInterval(-120),
+            events: [],
+            includeNullRateLimitEventAt: base
+        )
+        try createThreadsDatabase(
+            at: databaseURL,
+            rows: [(sessionID, base.timeIntervalSince1970, rolloutURL.path, "/tmp/alpha", 0)]
+        )
+
+        let staleSnapshot = RateLimitsSnapshot(
+            capturedAt: base.addingTimeInterval(-8 * 3600),
+            fiveHour: UsageWindow(
+                kind: .fiveHour,
+                usedPercent: 21,
+                windowMinutes: 300,
+                resetsAt: base.addingTimeInterval(-3 * 3600),
+                isStale: false,
+                assumedReset: false
+            ),
+            weekly: UsageWindow(
+                kind: .weekly,
+                usedPercent: 40,
+                windowMinutes: 10080,
+                resetsAt: base.addingTimeInterval(4 * 24 * 3600),
+                isStale: false,
+                assumedReset: false
+            ),
+            source: .sessionLog
+        )
+
+        try store.save(
+            AppState(
+                accounts: [AccountRecord(codexNumber: 1, email: "alpha@example.com", displayName: nil, lastSnapshot: staleSnapshot, lastUpdated: nil)],
+                activeEmail: "alpha@example.com",
+                lastRefresh: nil,
+                authObservations: [
+                    AuthObservation(email: "alpha@example.com", subject: "sub-alpha", accountId: "acct-alpha", observedAt: base.addingTimeInterval(-180))
+                ]
+            )
+        )
+
+        let viewModel = AppViewModel(
+            helloSender: NoopHelloSender(),
+            store: store,
+            authURL: authURL,
+            logsURL: sessionsURL,
+            threadDatabaseURL: databaseURL,
+            startObservers: false
+        )
+
+        try await waitUntil("refresh infers five-hour reset from newer thread activity") {
+            guard let snapshot = viewModel.state.accounts.first?.lastSnapshot else { return false }
+            return snapshot.fiveHour.assumedReset
+                && snapshot.fiveHour.isStale
+                && snapshot.fiveHour.usedPercent == 0
+                && abs(snapshot.fiveHour.resetsAt.timeIntervalSince(base.addingTimeInterval(300 * 60))) < 1
+                && snapshot.weekly.usedPercent == 40
+        } diagnostics: {
+            "active=\(String(describing: viewModel.state.activeEmail)) snapshot=\(String(describing: viewModel.state.accounts.first?.lastSnapshot)) bindings=\(viewModel.state.sessionBindings)"
+        }
+    }
+
+    func testManualRefreshInvokesForcedRefreshPathWhenSnapshotIsAssumed() async throws {
+        let sandbox = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: sandbox, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: sandbox) }
+
+        let sessionsURL = sandbox.appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsURL, withIntermediateDirectories: true)
+        let authURL = sandbox.appendingPathComponent("auth.json")
+        let databaseURL = sandbox.appendingPathComponent("state_5.sqlite")
+        let store = AppStateStore(fileURL: sandbox.appendingPathComponent("state.json"))
+        let helloSender = RecordingHelloSender()
+
+        try writeAuthFile(
+            to: authURL,
+            email: "alpha@example.com",
+            subject: "sub-alpha",
+            accountId: "acct-alpha"
+        )
+        try createThreadsDatabase(at: databaseURL, rows: [])
+
+        let assumedSnapshot = RateLimitsSnapshot(
+            capturedAt: Date(),
+            fiveHour: UsageWindow(kind: .fiveHour, usedPercent: 0, windowMinutes: 300, resetsAt: Date().addingTimeInterval(60), isStale: true, assumedReset: true),
+            weekly: UsageWindow(kind: .weekly, usedPercent: 15, windowMinutes: 10080, resetsAt: Date().addingTimeInterval(5 * 24 * 3600), isStale: false, assumedReset: false),
+            source: .sessionLog
+        )
+
+        try store.save(
+            AppState(
+                accounts: [AccountRecord(codexNumber: 1, email: "alpha@example.com", displayName: nil, lastSnapshot: assumedSnapshot, lastUpdated: nil)],
+                activeEmail: "alpha@example.com",
+                lastRefresh: nil
+            )
+        )
+
+        let viewModel = AppViewModel(
+            helloSender: helloSender,
+            store: store,
+            authURL: authURL,
+            logsURL: sessionsURL,
+            threadDatabaseURL: databaseURL,
+            startObservers: false
+        )
+
+        viewModel.manualRefresh()
+
+        try await waitUntil("manual refresh triggers forced refresh path") {
+            helloSender.callCount == 1
+        }
+    }
+
     private func writeAuthFile(to url: URL, email: String, subject: String, accountId: String) throws {
         let header = #"{"alg":"none","typ":"JWT"}"#
         let payload = #"{"email":"\#(email)","sub":"\#(subject)"}"#
@@ -156,7 +293,8 @@ final class AppViewModelRefreshTests: XCTestCase {
         to url: URL,
         sessionID: String,
         startedAt: Date,
-        events: [(Date, Double, Double)]
+        events: [(Date, Double, Double)],
+        includeNullRateLimitEventAt nullRateLimitTimestamp: Date? = nil
     ) throws {
         let formatter = fractionalISO8601Formatter()
         var lines = [
@@ -170,6 +308,9 @@ final class AppViewModelRefreshTests: XCTestCase {
                 primaryUsedPercent: event.1,
                 secondaryUsedPercent: event.2
             ))
+        }
+        if let nullRateLimitTimestamp {
+            lines.append(nullRateLimitLine(timestamp: nullRateLimitTimestamp))
         }
         try lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
     }
@@ -199,6 +340,13 @@ final class AppViewModelRefreshTests: XCTestCase {
         let formatter = fractionalISO8601Formatter()
         return """
         {"timestamp":"\(formatter.string(from: timestamp))","type":"event_msg","payload":{"type":"token_count","rate_limits":{"limit_id":"codex","primary":{"used_percent":\(primaryUsedPercent),"window_minutes":300,"resets_at":\(Int(timestamp.addingTimeInterval(3600).timeIntervalSince1970))},"secondary":{"used_percent":\(secondaryUsedPercent),"window_minutes":10080,"resets_at":\(Int(timestamp.addingTimeInterval(7 * 24 * 3600).timeIntervalSince1970))}}}}
+        """
+    }
+
+    private func nullRateLimitLine(timestamp: Date) -> String {
+        let formatter = fractionalISO8601Formatter()
+        return """
+        {"timestamp":"\(formatter.string(from: timestamp))","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0,"total_tokens":101},"last_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0,"total_tokens":101},"model_context_window":258400},"rate_limits":null}}
         """
     }
 
@@ -294,6 +442,14 @@ final class AppViewModelRefreshTests: XCTestCase {
 
 private struct NoopHelloSender: HelloSending {
     func sendHello(modelName: String?, message: String) throws {}
+}
+
+private final class RecordingHelloSender: HelloSending {
+    private(set) var callCount = 0
+
+    func sendHello(modelName: String?, message: String) throws {
+        callCount += 1
+    }
 }
 
 private let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
