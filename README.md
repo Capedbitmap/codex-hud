@@ -14,8 +14,8 @@ Codex HUD is a macOS menu bar application for managing Codex usage across accoun
 
 ## Core Capabilities
 - Weekly-first dashboard with 5-hour context for the active account.
-- Automatic active-account detection from local auth state.
-- Incremental ingestion of `token_count` events from Codex session logs.
+- Automatic active-account detection from the latest mapped live Codex session, with auth used only to bind newly observed sessions.
+- Incremental ingestion of `token_count` events from Codex session rollouts.
 - Deterministic recommendation engine with stickiness and reset-aware prioritization.
 - Notification evaluation on threshold crossings (`30%`, `15%`, `5%` remaining).
 - Optional headless automation to send a minimal Codex message (`"hi"`) for timer kick-off and refresh recovery.
@@ -25,12 +25,12 @@ Codex HUD is a macOS menu bar application for managing Codex usage across accoun
 - Local-first ingestion over API polling: eliminates external dependencies and privacy exposure while keeping latency low.
 - Strong typing at domain boundaries: `Percent`, usage-window models, and evaluators reduce invalid state propagation.
 - Policy-driven decision engines: recommendation, notifications, refresh gating, and reminders are explicit and testable.
-- Event-driven refresh with safety net: file watchers provide immediate updates; periodic health checks prevent drift.
+- Event-driven refresh with safety net: SQLite thread activity and rollout watchers provide immediate updates; periodic health checks prevent drift.
 - Deterministic recommendation ordering: earliest weekly reset first, with clear tie-breaking on remaining capacity.
 - Resilient storage lifecycle: atomic writes, backup rotation, and migration handling protect continuity.
 
 ## Reliability and Operational Behavior
-- Reads only the newest relevant log window through tail-based and incremental parsers.
+- Reads only the newest relevant rollout window through tail-based parsing and a bounded recent-thread query from Codex's local SQLite state.
 - Applies assumed reset logic when a stored reset passes while fresh logs are unavailable.
 - Debounces repeated threshold notifications by keeping a notification ledger in state.
 - Isolates automation decisions behind cooldown and window policies to avoid runaway behavior.

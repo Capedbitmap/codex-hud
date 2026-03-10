@@ -36,5 +36,9 @@ let package = Package(
             name: "CodexHudCoreTests",
             dependencies: ["CodexHudCore"]
         ),
+        .testTarget(
+            name: "CodexHudAppTests",
+            dependencies: ["CodexHudApp", "CodexHudCore"]
+        ),
     ]
 )
