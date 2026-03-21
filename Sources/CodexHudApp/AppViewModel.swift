@@ -34,7 +34,7 @@ final class AppViewModel: ObservableObject {
     private var lastLogRefresh: Date?
     private var lastStateRefresh: Date?
     private var isRefreshing = false
-    private var pendingForceRefresh = false
+    private var pendingRefreshRequest: RefreshRequest = .none
 
     init(
         helloSender: HelloSending = CodexHelloSender(),
@@ -112,18 +112,24 @@ final class AppViewModel: ObservableObject {
     func manualRefresh() {
         Task { @MainActor in
             self.refreshFromLogs(force: true)
-            try? await Task.sleep(nanoseconds: 750_000_000)
+            await self.waitForRefreshToComplete(timeout: Self.manualRefreshScanTimeout)
             guard self.shouldAttemptForcedRefreshAfterScan else { return }
             guard let activeEmail = self.state.activeEmail else { return }
+            let baselineCapturedAt = self.state.accounts
+                .first(where: { $0.email == activeEmail })?
+                .lastSnapshot?
+                .capturedAt
             self.attemptForcedRefresh(for: activeEmail, hasAuth: self.currentIdentity() != nil)
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-            self.refreshFromLogs(force: true)
+            await self.refreshUntilSnapshotAdvances(
+                for: activeEmail,
+                baselineCapturedAt: baselineCapturedAt
+            )
         }
     }
 
     func refreshFromLogs(force: Bool = false) {
         if isRefreshing {
-            pendingForceRefresh = pendingForceRefresh || force
+            pendingRefreshRequest.merge(force: force)
             return
         }
         isRefreshing = true
@@ -137,9 +143,10 @@ final class AppViewModel: ObservableObject {
                 applyAssumedResets()
                 evaluateWeeklyResetReminders()
                 isRefreshing = false
-                if pendingForceRefresh {
-                    pendingForceRefresh = false
-                    refreshFromLogs(force: true)
+                let pending = pendingRefreshRequest
+                pendingRefreshRequest = .none
+                if pending != .none {
+                    refreshFromLogs(force: pending == .force)
                 }
             }
             do {
@@ -327,7 +334,7 @@ final class AppViewModel: ObservableObject {
 
     private func handleAuthChange() {
         let now = Date()
-        if let last = lastAuthRefresh, now.timeIntervalSince(last) < 2 {
+        if let last = lastAuthRefresh, now.timeIntervalSince(last) < Self.authDebounceInterval {
             return
         }
         lastAuthRefresh = now
@@ -336,7 +343,7 @@ final class AppViewModel: ObservableObject {
 
     private func handleThreadActivityChange() {
         let now = Date()
-        if let last = lastThreadActivityRefresh, now.timeIntervalSince(last) < 0.5 {
+        if let last = lastThreadActivityRefresh, now.timeIntervalSince(last) < Self.threadDebounceInterval {
             return
         }
         lastThreadActivityRefresh = now
@@ -345,7 +352,7 @@ final class AppViewModel: ObservableObject {
 
     private func handleLogChange(_ fileURL: URL?) {
         let now = Date()
-        if let last = lastLogRefresh, now.timeIntervalSince(last) < 1 {
+        if let last = lastLogRefresh, now.timeIntervalSince(last) < Self.logDebounceInterval {
             return
         }
         lastLogRefresh = now
@@ -358,7 +365,7 @@ final class AppViewModel: ObservableObject {
 
     private func handleStateChange() {
         let now = Date()
-        if let last = lastStateRefresh, now.timeIntervalSince(last) < 2 {
+        if let last = lastStateRefresh, now.timeIntervalSince(last) < Self.stateDebounceInterval {
             return
         }
         lastStateRefresh = now
@@ -383,7 +390,7 @@ final class AppViewModel: ObservableObject {
     ) async throws -> Int {
         let originalBindings = state.sessionBindings
         let originalObservations = state.authObservations
-        let recentThreads = try threadStore.recentThreads(limit: Self.maxRecentThreads)
+        let recentThreads = try await recentThreads(refreshAt: refreshAt)
         let configuredEmails = Set(state.accounts.map(\.email))
         let metadataByRolloutPath = try await sessionMetadataByRolloutPath(recentThreads: recentThreads)
         let plan = refreshPlanner.plan(
@@ -480,6 +487,66 @@ final class AppViewModel: ObservableObject {
         }
 
         return changeCount
+    }
+
+    private func recentThreads(refreshAt: Date) async throws -> [CodexThreadActivity] {
+        let dbThreads = try? threadStore.recentThreads(limit: Self.maxRecentThreads)
+        let fallbackLogFiles = await logIngestor.recentLogFiles(
+            referenceDate: refreshAt,
+            lookbackDays: Self.logLookbackDays,
+            limit: Self.maxFallbackLogFiles
+        )
+        guard shouldAugmentThreadsFromLogs(dbThreads: dbThreads ?? [], recentLogFiles: fallbackLogFiles) else {
+            return dbThreads ?? []
+        }
+
+        var mergedBySessionID: [String: CodexThreadActivity] = [:]
+        for thread in dbThreads ?? [] {
+            mergedBySessionID[thread.sessionID] = thread
+        }
+
+        for fileURL in fallbackLogFiles {
+            guard let thread = try await threadFromRolloutFile(fileURL) else { continue }
+            if mergedBySessionID[thread.sessionID] == nil {
+                mergedBySessionID[thread.sessionID] = thread
+            }
+        }
+
+        return mergedBySessionID.values
+            .sorted { lhs, rhs in lhs.updatedAt > rhs.updatedAt }
+            .prefix(Self.maxRecentThreads)
+            .map { $0 }
+    }
+
+    private func shouldAugmentThreadsFromLogs(
+        dbThreads: [CodexThreadActivity],
+        recentLogFiles: [URL]
+    ) -> Bool {
+        guard !recentLogFiles.isEmpty else { return false }
+        guard let latestLogFile = recentLogFiles.first,
+              let latestLogModifiedAt = fileModifiedAt(latestLogFile) else {
+            return dbThreads.isEmpty
+        }
+        guard let latestThreadAt = dbThreads.first?.updatedAt else {
+            return true
+        }
+        return latestLogModifiedAt > latestThreadAt.addingTimeInterval(Self.threadStoreFreshnessSlack)
+    }
+
+    private func threadFromRolloutFile(_ fileURL: URL) async throws -> CodexThreadActivity? {
+        guard let metadata = try await logIngestor.sessionMetadata(in: fileURL) else { return nil }
+        let modifiedAt = fileModifiedAt(fileURL) ?? metadata.startedAt
+        let cwd = metadata.cwd ?? fileURL.deletingLastPathComponent().path
+        return CodexThreadActivity(
+            sessionID: metadata.sessionID,
+            updatedAt: modifiedAt,
+            rolloutPath: fileURL.path,
+            cwd: cwd
+        )
+    }
+
+    private func fileModifiedAt(_ fileURL: URL) -> Date? {
+        try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
     }
 
     private func snapshot(for event: TokenCountEvent) -> RateLimitsSnapshot? {
@@ -713,6 +780,38 @@ final class AppViewModel: ObservableObject {
         return "gpt-5.1-codex-mini"
     }
 
+    private func waitForRefreshToComplete(timeout: TimeInterval) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while isRefreshing && Date() < deadline {
+            try? await Task.sleep(nanoseconds: Self.refreshPollInterval)
+        }
+    }
+
+    private func refreshUntilSnapshotAdvances(
+        for email: String,
+        baselineCapturedAt: Date?
+    ) async {
+        for _ in 0..<Self.manualRefreshRetryCount {
+            refreshFromLogs(force: true)
+            await waitForRefreshToComplete(timeout: Self.manualRefreshScanTimeout)
+            guard !hasSnapshotAdvanced(for: email, baselineCapturedAt: baselineCapturedAt) else {
+                return
+            }
+            try? await Task.sleep(nanoseconds: Self.manualRefreshRetryDelay)
+        }
+    }
+
+    private func hasSnapshotAdvanced(for email: String, baselineCapturedAt: Date?) -> Bool {
+        guard let currentCapturedAt = state.accounts
+            .first(where: { $0.email == email })?
+            .lastSnapshot?
+            .capturedAt else {
+            return false
+        }
+        guard let baselineCapturedAt else { return true }
+        return currentCapturedAt > baselineCapturedAt
+    }
+
     private func persist() {
         guard let store else { return }
         do {
@@ -789,8 +888,38 @@ private extension AppViewModel {
     // Safety net in case filesystem events are missed (sleep/wake, log rotation, etc.).
     // Parsing is tail-based so this is intentionally kept reasonably frequent.
     static let defaultHealthCheckInterval: TimeInterval = 5 * 60
+    static let authDebounceInterval: TimeInterval = 0.5
+    static let threadDebounceInterval: TimeInterval = 0.25
+    static let logDebounceInterval: TimeInterval = 0.2
+    static let stateDebounceInterval: TimeInterval = 1
+    static let threadStoreFreshnessSlack: TimeInterval = 60
+    static let refreshPollInterval: UInt64 = 50_000_000
+    static let manualRefreshScanTimeout: TimeInterval = 0.8
+    static let manualRefreshRetryCount = 6
+    static let manualRefreshRetryDelay: UInt64 = 200_000_000
     static let logTailBytes: Int = 256 * 1024
     static let maxRecentThreads: Int = 96
+    static let maxFallbackLogFiles: Int = 96
+    static let logLookbackDays: Int = 14
     static let maxAuthObservations: Int = 64
     static let sessionBindingRetention: TimeInterval = 45 * 24 * 60 * 60
+}
+
+private extension AppViewModel {
+    enum RefreshRequest: Equatable {
+        case none
+        case normal
+        case force
+
+        mutating func merge(force: Bool) {
+            switch (self, force) {
+            case (.force, _), (_, true):
+                self = .force
+            case (.none, false):
+                self = .normal
+            case (.normal, false):
+                break
+            }
+        }
+    }
 }

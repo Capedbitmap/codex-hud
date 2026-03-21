@@ -274,6 +274,163 @@ final class AppViewModelRefreshTests: XCTestCase {
         }
     }
 
+    func testRefreshRebindsSharedSessionToLatestAuthObservation() async throws {
+        let sandbox = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: sandbox, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: sandbox) }
+
+        let sessionsURL = sandbox.appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsURL, withIntermediateDirectories: true)
+        let authURL = sandbox.appendingPathComponent("auth.json")
+        let databaseURL = sandbox.appendingPathComponent("state_5.sqlite")
+        let store = AppStateStore(fileURL: sandbox.appendingPathComponent("state.json"))
+
+        let base = Date().addingTimeInterval(-600)
+        let sharedSessionID = "session-shared"
+        let sharedRolloutURL = sessionsURL.appendingPathComponent("shared.jsonl")
+
+        try writeAuthFile(
+            to: authURL,
+            email: "beta@example.com",
+            subject: "sub-beta",
+            accountId: "acct-beta"
+        )
+        try writeRollout(
+            to: sharedRolloutURL,
+            sessionID: sharedSessionID,
+            startedAt: base.addingTimeInterval(10),
+            events: [(base.addingTimeInterval(80), 11.0, 2.0), (base.addingTimeInterval(140), 44.0, 8.0)]
+        )
+        try createThreadsDatabase(
+            at: databaseURL,
+            rows: [(sharedSessionID, base.addingTimeInterval(150).timeIntervalSince1970, sharedRolloutURL.path, "/tmp/shared", 0)]
+        )
+
+        let alphaSnapshot = RateLimitsSnapshot(
+            capturedAt: base.addingTimeInterval(70),
+            fiveHour: UsageWindow(kind: .fiveHour, usedPercent: 11, windowMinutes: 300, resetsAt: base.addingTimeInterval(300), isStale: false, assumedReset: false),
+            weekly: UsageWindow(kind: .weekly, usedPercent: 2, windowMinutes: 10080, resetsAt: base.addingTimeInterval(7 * 24 * 3600), isStale: false, assumedReset: false),
+            source: .sessionLog
+        )
+
+        try store.save(
+            AppState(
+                accounts: [
+                    AccountRecord(codexNumber: 1, email: "alpha@example.com", displayName: nil, lastSnapshot: alphaSnapshot, lastUpdated: nil),
+                    AccountRecord(codexNumber: 2, email: "beta@example.com", displayName: nil, lastSnapshot: nil, lastUpdated: nil)
+                ],
+                activeEmail: "alpha@example.com",
+                lastRefresh: nil,
+                sessionBindings: [
+                    sharedSessionID: SessionAccountBinding(
+                        sessionID: sharedSessionID,
+                        rolloutPath: sharedRolloutURL.path,
+                        email: "alpha@example.com",
+                        subject: "sub-alpha",
+                        accountId: "acct-alpha",
+                        startedAt: base.addingTimeInterval(10),
+                        lastObservedAt: base.addingTimeInterval(70)
+                    )
+                ],
+                authObservations: [
+                    AuthObservation(email: "alpha@example.com", subject: "sub-alpha", accountId: "acct-alpha", observedAt: base),
+                    AuthObservation(email: "beta@example.com", subject: "sub-beta", accountId: "acct-beta", observedAt: base.addingTimeInterval(120))
+                ]
+            )
+        )
+
+        let viewModel = AppViewModel(
+            helloSender: NoopHelloSender(),
+            store: store,
+            authURL: authURL,
+            logsURL: sessionsURL,
+            threadDatabaseURL: databaseURL,
+            startObservers: false
+        )
+
+        try await waitUntil("refresh rebinds shared session to beta") {
+            viewModel.state.activeEmail == "beta@example.com"
+                && viewModel.state.sessionBindings[sharedSessionID]?.email == "beta@example.com"
+                && viewModel.state.accounts.first(where: { $0.email == "beta@example.com" })?.lastSnapshot?.fiveHour.usedPercent == 44.0
+        } diagnostics: {
+            let bindingEmail = viewModel.state.sessionBindings[sharedSessionID]?.email ?? "<missing>"
+            let betaSnapshot = viewModel.state.accounts.first(where: { $0.email == "beta@example.com" })?.lastSnapshot?.fiveHour.usedPercent
+            return "active=\(String(describing: viewModel.state.activeEmail)) binding=\(bindingEmail) betaSnapshot=\(String(describing: betaSnapshot))"
+        }
+    }
+
+    func testRefreshFallsBackToRecentRolloutFilesWhenThreadStoreIsStale() async throws {
+        let sandbox = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: sandbox, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: sandbox) }
+
+        let sessionsURL = sandbox.appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsURL, withIntermediateDirectories: true)
+        let authURL = sandbox.appendingPathComponent("auth.json")
+        let databaseURL = sandbox.appendingPathComponent("state_5.sqlite")
+        let store = AppStateStore(fileURL: sandbox.appendingPathComponent("state.json"))
+
+        let base = Date().addingTimeInterval(-1200)
+        let staleSessionID = "session-stale"
+        let freshSessionID = "session-fresh"
+        let staleRolloutURL = sessionsURL.appendingPathComponent("stale.jsonl")
+        let freshRolloutURL = sessionsURL.appendingPathComponent("fresh.jsonl")
+
+        try writeAuthFile(
+            to: authURL,
+            email: "beta@example.com",
+            subject: "sub-beta",
+            accountId: "acct-beta"
+        )
+        try writeRollout(
+            to: staleRolloutURL,
+            sessionID: staleSessionID,
+            startedAt: base.addingTimeInterval(10),
+            events: [(base.addingTimeInterval(20), 5.0, 1.0)]
+        )
+        try writeRollout(
+            to: freshRolloutURL,
+            sessionID: freshSessionID,
+            startedAt: base.addingTimeInterval(900),
+            events: [(base.addingTimeInterval(930), 33.0, 7.0)]
+        )
+        try createThreadsDatabase(
+            at: databaseURL,
+            rows: [(staleSessionID, base.addingTimeInterval(30).timeIntervalSince1970, staleRolloutURL.path, "/tmp/stale", 0)]
+        )
+
+        try store.save(
+            AppState(
+                accounts: [AccountRecord(codexNumber: 1, email: "beta@example.com", displayName: nil, lastSnapshot: nil, lastUpdated: nil)],
+                activeEmail: nil,
+                lastRefresh: nil,
+                authObservations: [
+                    AuthObservation(email: "beta@example.com", subject: "sub-beta", accountId: "acct-beta", observedAt: base)
+                ]
+            )
+        )
+
+        let viewModel = AppViewModel(
+            helloSender: NoopHelloSender(),
+            store: store,
+            authURL: authURL,
+            logsURL: sessionsURL,
+            threadDatabaseURL: databaseURL,
+            startObservers: false
+        )
+
+        try await waitUntil("refresh uses fresh rollout file when thread DB is stale") {
+            viewModel.state.activeEmail == "beta@example.com"
+                && viewModel.state.sessionBindings[freshSessionID]?.email == "beta@example.com"
+                && viewModel.state.accounts.first?.lastSnapshot?.fiveHour.usedPercent == 33.0
+        } diagnostics: {
+            let active = viewModel.state.activeEmail ?? "<nil>"
+            let freshBinding = viewModel.state.sessionBindings[freshSessionID]?.email ?? "<missing>"
+            let snapshot = viewModel.state.accounts.first?.lastSnapshot?.fiveHour.usedPercent
+            return "active=\(active) freshBinding=\(freshBinding) snapshot=\(String(describing: snapshot)) bindings=\(viewModel.state.sessionBindings)"
+        }
+    }
+
     private func writeAuthFile(to url: URL, email: String, subject: String, accountId: String) throws {
         let header = #"{"alg":"none","typ":"JWT"}"#
         let payload = #"{"email":"\#(email)","sub":"\#(subject)"}"#

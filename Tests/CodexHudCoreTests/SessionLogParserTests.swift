@@ -114,6 +114,30 @@ final class SessionLogParserTests: XCTestCase {
         XCTAssertEqual(metadata?.startedAt, formatter.date(from: "2026-03-08T06:38:57.764Z"))
     }
 
+    func testParsesSessionMetadataWhenHeaderLineExceedsLegacyChunkLimit() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let fileURL = tempDir.appendingPathComponent("rollout.jsonl")
+        let largeInstruction = String(repeating: "x", count: 20_000)
+        let line = """
+        {"timestamp":"2026-03-20T12:00:00.000Z","type":"session_meta","payload":{"id":"session-long-header","timestamp":"2026-03-20T12:00:00.000Z","cwd":"/tmp/project","originator":"codex_cli_rs","cli_version":"0.116.0","source":"cli","model_provider":"openai","base_instructions":{"text":"\(largeInstruction)"}}}
+        """
+        XCTAssertGreaterThan(line.utf8.count, 16 * 1024)
+        let content = [
+            line,
+            #"{"timestamp":"2026-03-20T12:01:00.000Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"limit_id":"codex","primary":{"used_percent":10.0,"window_minutes":300,"resets_at":1773970800},"secondary":{"used_percent":20.0,"window_minutes":10080,"resets_at":1774575600}}}}"#
+        ].joined(separator: "\n")
+        try content.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let parser = SessionLogParser()
+        let metadata = try parser.sessionMetadata(inFile: fileURL)
+
+        XCTAssertEqual(metadata?.sessionID, "session-long-header")
+        XCTAssertEqual(metadata?.cwd, "/tmp/project")
+    }
+
     private func iso8601() -> ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]

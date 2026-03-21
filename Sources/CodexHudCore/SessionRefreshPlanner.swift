@@ -52,6 +52,25 @@ public struct SessionRefreshPlanner {
             if var existing = bindings[metadata.sessionID] {
                 existing.rolloutPath = thread.rolloutPath
                 existing.lastObservedAt = now
+                let canRebindExisting = shouldAttemptRebindingExistingSession(
+                    existing: existing,
+                    bindings: bindings,
+                    currentIdentity: currentIdentity
+                )
+                if canRebindExisting,
+                   let rebinding = rebindingObservation(
+                       observations: observations,
+                       currentIdentity: currentIdentity,
+                       observedAt: observedAt,
+                       configuredEmails: configuredEmails,
+                       sessionStartedAt: metadata.startedAt,
+                       threadUpdatedAt: thread.updatedAt
+                   ),
+                   rebinding.email != existing.email {
+                    existing.email = rebinding.email
+                    existing.subject = rebinding.subject
+                    existing.accountId = rebinding.accountId
+                }
                 bindings[metadata.sessionID] = existing
                 continue
             }
@@ -93,6 +112,54 @@ public struct SessionRefreshPlanner {
             activeEmail: activeEmail,
             candidateRolloutPaths: candidateRolloutPaths(recentThreads: recentThreads, bindings: bindings)
         )
+    }
+
+    private func shouldAttemptRebindingExistingSession(
+        existing: SessionAccountBinding,
+        bindings: [String: SessionAccountBinding],
+        currentIdentity: AuthAccountIdentity?
+    ) -> Bool {
+        guard let currentIdentity else { return false }
+        guard existing.email != currentIdentity.email else { return false }
+        return !bindings.values.contains(where: { candidate in
+            candidate.sessionID != existing.sessionID
+                && candidate.email == currentIdentity.email
+                && candidate.startedAt > existing.startedAt.addingTimeInterval(authObservationClockSkewGrace)
+        })
+    }
+
+    private func rebindingObservation(
+        observations: [AuthObservation],
+        currentIdentity: AuthAccountIdentity?,
+        observedAt: Date,
+        configuredEmails: Set<String>,
+        sessionStartedAt: Date,
+        threadUpdatedAt: Date
+    ) -> AuthObservation? {
+        let earliestAccepted = sessionStartedAt.addingTimeInterval(-authObservationClockSkewGrace)
+        let latestAccepted = threadUpdatedAt.addingTimeInterval(authObservationClockSkewGrace)
+
+        var candidates = observations.filter { observation in
+            configuredEmails.contains(observation.email)
+                && observation.observedAt >= earliestAccepted
+                && observation.observedAt <= latestAccepted
+        }
+
+        if let currentIdentity,
+           configuredEmails.contains(currentIdentity.email),
+           observedAt >= earliestAccepted,
+           observedAt <= latestAccepted {
+            candidates.append(AuthObservation(
+                email: currentIdentity.email,
+                subject: currentIdentity.subject,
+                accountId: currentIdentity.accountId,
+                observedAt: observedAt
+            ))
+        }
+
+        return candidates.max { lhs, rhs in
+            lhs.observedAt < rhs.observedAt
+        }
     }
 
     private func latestMappedEmail(

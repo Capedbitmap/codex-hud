@@ -68,19 +68,9 @@ public struct SessionLogParser {
         let handle = try FileHandle(forReadingFrom: file)
         defer { try? handle.close() }
 
-        let header = try handle.read(upToCount: 16 * 1024) ?? Data()
-        guard !header.isEmpty else { return nil }
-        let lines = header.split(separator: 0x0A, omittingEmptySubsequences: false)
+        guard let line = try readFirstLine(from: handle) else { return nil }
         let parser = SessionMetaLineParser()
-
-        for rawLine in lines {
-            guard let line = String(data: rawLine, encoding: .utf8) else { continue }
-            if let metadata = parser.parseSessionMetadata(fromLine: line) {
-                return metadata
-            }
-        }
-
-        return nil
+        return parser.parseSessionMetadata(fromLine: line)
     }
 
     private func jsonlFilesSortedByModificationDate(root: URL) throws -> [URL] {
@@ -98,6 +88,29 @@ public struct SessionLogParser {
         }
     }
 
+    private func readFirstLine(from handle: FileHandle) throws -> String? {
+        var bytes = Data()
+        while bytes.count < Self.maxSessionMetaBytes {
+            let remaining = Self.maxSessionMetaBytes - bytes.count
+            let chunk = try handle.read(upToCount: min(Self.readChunkBytes, remaining)) ?? Data()
+            if chunk.isEmpty {
+                break
+            }
+
+            if let newlineIndex = chunk.firstIndex(of: 0x0A) {
+                bytes.append(chunk.prefix(upTo: newlineIndex))
+                break
+            }
+
+            bytes.append(chunk)
+        }
+
+        guard !bytes.isEmpty else { return nil }
+        return String(data: bytes, encoding: .utf8)
+    }
+
+    private static let readChunkBytes = 4 * 1024
+    private static let maxSessionMetaBytes = 256 * 1024
 }
 
 private struct SessionMetaLineParser {
