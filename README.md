@@ -103,20 +103,34 @@ In practice, this means the app follows the most recently active mapped live ses
 `CodexHudAutomation` is an optional executable for scheduled policy actions.
 
 ### Data Flow
-```text
-~/.codex/auth.json + ~/.codex/state_5.sqlite + ~/.codex/sessions/**/rollout-*.jsonl
-                                   |
-                                   v
-          AuthDecoder + ThreadActivityStore + SessionLogIngestor
-                                   |
-                                   v
-                    CodexHudCore domain models and policies
-                                   |
-                                   v
-               AppStateStore (Application Support/state.json)
-                                   |
-                                   v
-          AppViewModel + NotificationManager + SwiftUI menu UI
+```mermaid
+flowchart TD
+    subgraph Codex["Local Codex Data"]
+        Auth["~/.codex/auth.json"]
+        Threads["~/.codex/state_5.sqlite"]
+        Rollouts["~/.codex/sessions/**/rollout-*.jsonl"]
+    end
+
+    subgraph Ingestion["Ingestion and Attribution"]
+        AuthDecoder["AuthDecoder"]
+        ThreadStore["ThreadActivityStore"]
+        LogIngestor["SessionLogIngestor"]
+    end
+
+    Core["CodexHudCore domain models and policies"]
+    State["AppStateStore\n(Application Support/state.json)"]
+    UI["AppViewModel + NotificationManager + SwiftUI menu UI"]
+
+    Auth --> AuthDecoder
+    Threads --> ThreadStore
+    Rollouts --> LogIngestor
+
+    AuthDecoder --> Core
+    ThreadStore --> Core
+    LogIngestor --> Core
+
+    Core --> State
+    State --> UI
 ```
 
 ## Headless Automation (Optional)
