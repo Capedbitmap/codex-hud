@@ -1,10 +1,17 @@
 # Codex HUD
 
-Codex HUD is a macOS menu bar application for managing Codex usage across accounts. It ingests local Codex session data, models usage state with strongly typed domain logic, and recommends the next account to use based on weekly reset timing and remaining capacity.
+Codex HUD is a private macOS menu bar app for tracking Codex usage across five accounts. It reads local Codex session activity, attributes live sessions to the right configured account, and recommends when to stay put or switch based on weekly reset timing and remaining capacity.
 
 <p align="center">
   <img src="docs/images/codex-hud-menu.png" alt="Codex HUD menu bar popover showing account status, weekly usage, and recommendation" width="560" />
 </p>
+
+## At a Glance
+- Tracks five configured Codex accounts from local machine data only.
+- Follows the latest mapped live Codex session instead of relying solely on the current auth file.
+- Shows weekly remaining first, with 5-hour context for the active account.
+- Recommends the next best account to use with deterministic, reset-aware prioritization.
+- Can optionally send a minimal `"hi"` message for guarded timer kick-off and refresh recovery.
 
 ## Why This Exists
 - Codex usage constraints are multi-windowed and account-scoped.
@@ -45,8 +52,8 @@ Codex HUD is a macOS menu bar application for managing Codex usage across accoun
 - Swift 6.2 toolchain (Xcode 16+ recommended)
 - Codex CLI installed and authenticated (`~/.codex` present)
 
-## Install and Run (First Time)
-Clone and launch in one flow:
+## Quick Start
+Clone, build, install, and launch in one flow:
 ```bash
 git clone https://github.com/Capedbitmap/codex-hud.git
 cd codex-hud
@@ -63,18 +70,32 @@ If you only want to install without launching:
 ./scripts/install-and-run.sh --no-open
 ```
 
-## Daily Use
+## Install and Run (First Time)
 After first install, launch from Finder (`~/Applications/CodexHudApp.app`) or run:
 ```bash
 open ~/Applications/CodexHudApp.app
 ```
 
-## Configuration
+## First-Time Setup
 1. Open **Settings** from the popover.
 2. Map `Codex 1` through `Codex 5` to unique account emails.
 3. Enable notifications if needed.
+4. Use Codex normally. Once local session activity exists, the HUD will begin attributing usage.
 
-If account/usage data is empty, confirm Codex CLI is installed and authenticated (`~/.codex/auth.json` exists).
+If account or usage data is empty, first confirm Codex CLI is installed and authenticated (`~/.codex/auth.json` exists), then generate fresh Codex activity so recent rollout data exists under `~/.codex`.
+
+## How It Decides the Active Account
+Codex HUD does not treat the current auth file as the whole truth. Instead, it combines multiple local signals:
+- Recent thread activity from Codex's local SQLite state (`~/.codex/state_5.sqlite`).
+- Session metadata and `token_count` updates from rollout files under `~/.codex/sessions`.
+- Auth observations to bind newly seen sessions to configured account emails.
+
+In practice, this means the app follows the most recently active mapped live session, while still using auth state as a fallback when a new session first appears.
+
+## Daily Use
+- Open the menu bar popover to see the active account, weekly remaining, 5-hour window, and recommendation.
+- Use **Refresh** when you want an immediate rescan of local Codex state.
+- Open **Settings** to update account mappings or notification permissions.
 
 ## Architecture Overview
 `CodexHudCore` owns domain behavior and policy logic.
@@ -83,19 +104,19 @@ If account/usage data is empty, confirm Codex CLI is installed and authenticated
 
 ### Data Flow
 ```text
-~/.codex/auth.json + ~/.codex/sessions/**/rollout-*.jsonl
-            |
-            v
-   AuthDecoder + SessionLogIngestor
-            |
-            v
-   CodexHudCore domain models/policies
-            |
-            v
-   AppStateStore (Application Support/state.json)
-            |
-            v
- AppViewModel + NotificationManager + SwiftUI Menu UI
+~/.codex/auth.json + ~/.codex/state_5.sqlite + ~/.codex/sessions/**/rollout-*.jsonl
+                                   |
+                                   v
+          AuthDecoder + ThreadActivityStore + SessionLogIngestor
+                                   |
+                                   v
+                    CodexHudCore domain models and policies
+                                   |
+                                   v
+               AppStateStore (Application Support/state.json)
+                                   |
+                                   v
+          AppViewModel + NotificationManager + SwiftUI menu UI
 ```
 
 ## Headless Automation (Optional)
@@ -184,6 +205,22 @@ docs/images/           # README assets
 - Single-user, local machine workflow.
 - No credential management or account switching automation.
 - No cloud sync or multi-device state sharing.
+
+## Troubleshooting
+### No usage data appears
+- Confirm Codex CLI is installed and authenticated.
+- Confirm `~/.codex/auth.json` exists.
+- Generate fresh Codex activity so new rollout files and thread updates exist.
+- Use the popover **Refresh** action to trigger an immediate rescan.
+
+### The active account looks wrong
+- Verify the email mappings in **Settings** are correct and unique.
+- Generate activity in the session you expect to be active; the HUD prefers the most recently active mapped live thread.
+- If you recently switched accounts, use **Refresh** to rescan auth observations and rollout data immediately.
+
+### Notifications do not appear
+- Enable notifications in the app settings flow.
+- If macOS previously denied access, re-enable notifications in System Settings.
 
 ## Contributing
 Contributions are welcome via pull requests. See `CONTRIBUTING.md` for workflow, required checks, and branch-protection recommendations.
