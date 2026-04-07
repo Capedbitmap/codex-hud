@@ -8,7 +8,12 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var lastRefreshSource: SnapshotSource?
 
     private let store: AppStateStore?
+    private let authURL: URL
+    private let logsURL: URL
+    private let threadDatabaseURL: URL
     private let authDecoder = AuthDecoder()
+    private let threadStore: ThreadActivityStore
+    private let refreshPlanner = SessionRefreshPlanner()
     private let usageManager = UsageStateManager()
     private let notificationEvaluator = NotificationEvaluator()
     private let notificationManager = NotificationManager()
@@ -21,38 +26,57 @@ final class AppViewModel: ObservableObject {
     private var healthTimer: Timer?
     private var maintenanceTimer: Timer?
     private var authWatcher: AuthFileWatcher?
+    private var threadActivityWatcher: ThreadActivityWatcher?
     private var logWatcher: SessionLogWatcher?
     private var stateWatcher: StateFileWatcher?
     private var lastAuthRefresh: Date?
+    private var lastThreadActivityRefresh: Date?
     private var lastLogRefresh: Date?
     private var lastStateRefresh: Date?
-    private var authChangeCutoff: Date?
     private var isRefreshing = false
+    private var pendingRefreshRequest: RefreshRequest = .none
 
     init(
         helloSender: HelloSending = CodexHelloSender(),
-        healthCheckInterval: TimeInterval = AppViewModel.defaultHealthCheckInterval
+        healthCheckInterval: TimeInterval = AppViewModel.defaultHealthCheckInterval,
+        store: AppStateStore? = nil,
+        authURL: URL? = nil,
+        logsURL: URL? = nil,
+        threadDatabaseURL: URL? = nil,
+        startObservers: Bool = true
     ) {
         self.helloSender = helloSender
         self.healthCheckInterval = healthCheckInterval
-        self.logIngestor = SessionLogIngestor(logsURL: URL(fileURLWithPath: "~/.codex/sessions").expandingTildeInPath, tailBytes: Self.logTailBytes)
-        do {
-            store = try AppStateStore.defaultStore()
-        } catch {
-            store = nil
+        self.authURL = authURL ?? URL(fileURLWithPath: "~/.codex/auth.json").expandingTildeInPath
+        self.logsURL = logsURL ?? URL(fileURLWithPath: "~/.codex/sessions").expandingTildeInPath
+        self.threadDatabaseURL = threadDatabaseURL ?? URL(fileURLWithPath: "~/.codex/state_5.sqlite").expandingTildeInPath
+        self.threadStore = ThreadActivityStore(databaseURL: self.threadDatabaseURL)
+        self.logIngestor = SessionLogIngestor(logsURL: self.logsURL, tailBytes: Self.logTailBytes)
+        if let store {
+            self.store = store
+        } else {
+            do {
+                self.store = try AppStateStore.defaultStore()
+            } catch {
+                self.store = nil
+            }
         }
-        if let stored = try? store?.load() {
+        if let stored = try? self.store?.load() {
             state = stored
         } else {
             state = AppState(accounts: [], activeEmail: nil, lastRefresh: nil)
         }
+        migrateCodexAccountNumbersIfNeeded()
         refreshActiveEmail()
         applyAssumedResets()
-        startHealthChecks()
-        startMaintenance()
-        startAuthWatcher()
-        startLogWatcher()
-        startStateWatcher()
+        if startObservers {
+            startHealthChecks()
+            startMaintenance()
+            startAuthWatcher()
+            startThreadActivityWatcher()
+            startLogWatcher()
+            startStateWatcher()
+        }
         refreshFromLogs()
     }
 
@@ -85,11 +109,31 @@ final class AppViewModel: ObservableObject {
         return state.dailyHelloRecords[activeEmail]?.lastRun
     }
 
-    func refreshFromLogs() {
-        guard !isRefreshing else { return }
+    func manualRefresh() {
+        Task { @MainActor in
+            self.refreshFromLogs(force: true)
+            await self.waitForRefreshToComplete(timeout: Self.manualRefreshScanTimeout)
+            guard self.shouldAttemptForcedRefreshAfterScan else { return }
+            guard let activeEmail = self.state.activeEmail else { return }
+            let baselineCapturedAt = self.state.accounts
+                .first(where: { $0.email == activeEmail })?
+                .lastSnapshot?
+                .capturedAt
+            self.attemptForcedRefresh(for: activeEmail, hasAuth: self.currentIdentity() != nil)
+            await self.refreshUntilSnapshotAdvances(
+                for: activeEmail,
+                baselineCapturedAt: baselineCapturedAt
+            )
+        }
+    }
+
+    func refreshFromLogs(force: Bool = false) {
+        if isRefreshing {
+            pendingRefreshRequest.merge(force: force)
+            return
+        }
         isRefreshing = true
         lastError = nil
-        let authURL = defaultAuthURL()
 
         Task {
             defer {
@@ -99,52 +143,38 @@ final class AppViewModel: ObservableObject {
                 applyAssumedResets()
                 evaluateWeeklyResetReminders()
                 isRefreshing = false
+                let pending = pendingRefreshRequest
+                pendingRefreshRequest = .none
+                if pending != .none {
+                    refreshFromLogs(force: pending == .force)
+                }
             }
             do {
-                let identity = try authDecoder.loadActiveAccount(from: authURL)
-                updateActiveEmail(identity.email)
-                guard let accountIndex = state.accounts.firstIndex(where: { $0.email == identity.email }) else {
-                    lastError = "Active account is not configured in Settings."
+                let observedAt = authFileModifiedAt() ?? Date()
+                let identity = currentIdentity()
+                if let identity {
+                    recordAuthObservation(identity, observedAt: observedAt)
+                }
+                let refreshAt = Date()
+                let changes = try await refreshSnapshots(force: force, currentIdentity: identity, observedAt: observedAt, refreshAt: refreshAt)
+                guard let activeEmail = state.activeEmail,
+                      let activeAccount = state.accounts.first(where: { $0.email == activeEmail }) else {
+                    lastError = identity == nil
+                        ? "No active Codex session could be mapped yet."
+                        : "Active account is not configured in Settings."
                     persist()
                     return
                 }
-                let cutoff = authChangeCutoff
-                guard let latestEvent = try await logIngestor.refreshLatestLogFile(cutoff: cutoff) else {
-                    lastError = "No usage data yet for active account. Run /status once."
+                guard let activeSnapshot = activeAccount.lastSnapshot else {
+                    lastError = "No usage data yet for active session. Run /status once."
                     persist()
                     return
                 }
-
-                guard let primary = latestEvent.primary, let secondary = latestEvent.secondary else {
-                    lastError = "Usage data missing in logs."
-                    attemptForcedRefresh(for: identity.email, hasAuth: true)
-                    persist()
-                    return
+                if changes == 0, force || activeSnapshot.source == .sessionLog {
+                    state.lastRefresh = refreshAt
+                    lastRefreshSource = .sessionLog
                 }
-                let fiveHour = UsageWindow(
-                    kind: .fiveHour,
-                    usedPercent: primary.usedPercent,
-                    windowMinutes: primary.windowMinutes,
-                    resetsAt: primary.resetsAt,
-                    isStale: false,
-                    assumedReset: false
-                )
-                let weekly = UsageWindow(
-                    kind: .weekly,
-                    usedPercent: secondary.usedPercent,
-                    windowMinutes: secondary.windowMinutes,
-                    resetsAt: secondary.resetsAt,
-                    isStale: false,
-                    assumedReset: false
-                )
-                let snapshot = RateLimitsSnapshot(capturedAt: latestEvent.timestamp, fiveHour: fiveHour, weekly: weekly, source: .sessionLog)
-                state.accounts[accountIndex].lastSnapshot = snapshot
-                state.accounts[accountIndex].lastUpdated = Date()
-                state.lastRefresh = Date()
-                lastRefreshSource = snapshot.source
-                authChangeCutoff = nil
                 persist()
-                evaluateNotifications(for: state.accounts[accountIndex])
             } catch let error as SessionLogError {
                 switch error {
                 case .noTokenCountEvents:
@@ -208,6 +238,7 @@ final class AppViewModel: ObservableObject {
         if let activeEmail = state.activeEmail, !state.accounts.contains(where: { $0.email == activeEmail }) {
             state.activeEmail = nil
         }
+        state.sessionBindings = pruneSessionBindings(state.sessionBindings, configuredEmails: Set(state.accounts.map(\.email)))
         persist()
     }
 
@@ -217,8 +248,11 @@ final class AppViewModel: ObservableObject {
 
     private func refreshActiveEmail() {
         do {
-            let identity = try authDecoder.loadActiveAccount(from: defaultAuthURL())
-            updateActiveEmail(identity.email)
+            let identity = try authDecoder.loadActiveAccount(from: authURL)
+            recordAuthObservation(identity, observedAt: authFileModifiedAt() ?? Date())
+            if state.activeEmail == nil, state.accounts.contains(where: { $0.email == identity.email }) {
+                updateActiveEmail(identity.email)
+            }
         } catch {
             return
         }
@@ -227,7 +261,6 @@ final class AppViewModel: ObservableObject {
     private func updateActiveEmail(_ email: String) {
         if state.activeEmail != email {
             state.activeEmail = email
-            authChangeCutoff = authFileModifiedAt() ?? Date()
         }
     }
 
@@ -256,7 +289,7 @@ final class AppViewModel: ObservableObject {
 
     private func startAuthWatcher() {
         authWatcher?.stop()
-        authWatcher = AuthFileWatcher(authURL: defaultAuthURL()) { [weak self] in
+        authWatcher = AuthFileWatcher(authURL: authURL) { [weak self] in
             guard let self else { return }
             Task { @MainActor in
                 self.handleAuthChange()
@@ -265,9 +298,20 @@ final class AppViewModel: ObservableObject {
         authWatcher?.start()
     }
 
+    private func startThreadActivityWatcher() {
+        threadActivityWatcher?.stop()
+        threadActivityWatcher = ThreadActivityWatcher(fileURLs: threadActivityFiles()) { [weak self] in
+            guard let self else { return }
+            Task { @MainActor in
+                self.handleThreadActivityChange()
+            }
+        }
+        threadActivityWatcher?.start()
+    }
+
     private func startLogWatcher() {
         logWatcher?.stop()
-        logWatcher = SessionLogWatcher(logsURL: defaultLogsURL()) { [weak self] fileURL in
+        logWatcher = SessionLogWatcher(logsURL: logsURL) { [weak self] fileURL in
             guard let self else { return }
             Task { @MainActor in
                 self.handleLogChange(fileURL)
@@ -290,26 +334,38 @@ final class AppViewModel: ObservableObject {
 
     private func handleAuthChange() {
         let now = Date()
-        if let last = lastAuthRefresh, now.timeIntervalSince(last) < 2 {
+        if let last = lastAuthRefresh, now.timeIntervalSince(last) < Self.authDebounceInterval {
             return
         }
         lastAuthRefresh = now
+        refreshFromLogs(force: true)
+    }
+
+    private func handleThreadActivityChange() {
+        let now = Date()
+        if let last = lastThreadActivityRefresh, now.timeIntervalSince(last) < Self.threadDebounceInterval {
+            return
+        }
+        lastThreadActivityRefresh = now
         refreshFromLogs()
     }
 
     private func handleLogChange(_ fileURL: URL?) {
         let now = Date()
-        if let last = lastLogRefresh, now.timeIntervalSince(last) < 1 {
+        if let last = lastLogRefresh, now.timeIntervalSince(last) < Self.logDebounceInterval {
             return
         }
         lastLogRefresh = now
-        guard let fileURL else { return }
-        ingestLogUpdate(from: fileURL)
+        if fileURL == nil {
+            refreshFromLogs()
+            return
+        }
+        refreshFromLogs()
     }
 
     private func handleStateChange() {
         let now = Date()
-        if let last = lastStateRefresh, now.timeIntervalSince(last) < 2 {
+        if let last = lastStateRefresh, now.timeIntervalSince(last) < Self.stateDebounceInterval {
             return
         }
         lastStateRefresh = now
@@ -326,48 +382,272 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    private func ingestLogUpdate(from fileURL: URL) {
-        guard let activeEmail = state.activeEmail else {
-            refreshFromLogs()
+    private func refreshSnapshots(
+        force: Bool,
+        currentIdentity: AuthAccountIdentity?,
+        observedAt: Date,
+        refreshAt: Date
+    ) async throws -> Int {
+        let originalBindings = state.sessionBindings
+        let originalObservations = state.authObservations
+        let recentThreads = try await recentThreads(refreshAt: refreshAt)
+        let configuredEmails = Set(state.accounts.map(\.email))
+        let metadataByRolloutPath = try await sessionMetadataByRolloutPath(recentThreads: recentThreads)
+        let plan = refreshPlanner.plan(
+            state: state,
+            configuredEmails: configuredEmails,
+            recentThreads: recentThreads,
+            metadataByRolloutPath: metadataByRolloutPath,
+            currentIdentity: currentIdentity,
+            observedAt: observedAt,
+            now: refreshAt
+        )
+        var bindings = plan.bindings
+        var latestByEmail: [String: (binding: SessionAccountBinding, event: TokenCountEvent)] = [:]
+        var latestActivityByEmail: [String: Date] = [:]
+        state.sessionBindings = bindings
+        pruneAuthObservations()
+
+        for thread in recentThreads {
+            guard let binding = bindings[thread.sessionID],
+                  configuredEmails.contains(binding.email) else {
+                continue
+            }
+            let current = latestActivityByEmail[binding.email] ?? .distantPast
+            if thread.updatedAt > current {
+                latestActivityByEmail[binding.email] = thread.updatedAt
+            }
+        }
+
+        for binding in bindings.values where configuredEmails.contains(binding.email) {
+            let fileURL = URL(fileURLWithPath: binding.rolloutPath)
+            let cutoff = force ? nil : state.accounts.first(where: { $0.email == binding.email })?.lastSnapshot?.capturedAt
+            guard let event = try await logIngestor.latestTokenCountEvent(in: fileURL, since: cutoff) else { continue }
+            var refreshedBinding = binding
+            refreshedBinding.lastObservedAt = max(binding.lastObservedAt, event.timestamp)
+            bindings[binding.sessionID] = refreshedBinding
+            if let current = latestByEmail[binding.email] {
+                if event.timestamp > current.event.timestamp {
+                    latestByEmail[binding.email] = (refreshedBinding, event)
+                }
+            } else {
+                latestByEmail[binding.email] = (refreshedBinding, event)
+            }
+        }
+
+        state.sessionBindings = bindings
+        if let activeEmail = plan.activeEmail {
+            updateActiveEmail(activeEmail)
+        } else {
+            state.activeEmail = nil
+        }
+
+        var changeCount = 0
+        var updatedAccounts: [AccountRecord] = []
+
+        for index in state.accounts.indices {
+            let email = state.accounts[index].email
+            let snapshotCandidate: RateLimitsSnapshot?
+            if let candidate = latestByEmail[email],
+               let parsed = snapshot(for: candidate.event) {
+                snapshotCandidate = parsed
+            } else if let existing = state.accounts[index].lastSnapshot,
+                      let latestActivityAt = latestActivityByEmail[email] {
+                snapshotCandidate = inferredSnapshot(from: existing, latestActivityAt: latestActivityAt)
+            } else {
+                snapshotCandidate = nil
+            }
+
+            guard let snapshot = snapshotCandidate else {
+                continue
+            }
+
+            let hasMeaningfulChange = state.accounts[index].lastSnapshot != snapshot
+            guard hasMeaningfulChange || force else { continue }
+
+            state.accounts[index].lastSnapshot = snapshot
+            if hasMeaningfulChange {
+                state.accounts[index].lastUpdated = refreshAt
+                updatedAccounts.append(state.accounts[index])
+                changeCount += 1
+            }
+            state.lastRefresh = refreshAt
+            lastRefreshSource = snapshot.source
+        }
+
+        let attributionChanged = state.sessionBindings != originalBindings || state.authObservations != originalObservations
+        if changeCount > 0 || attributionChanged {
+            persist()
+        }
+
+        if changeCount > 0 {
+            for account in updatedAccounts {
+                evaluateNotifications(for: account)
+            }
+        }
+
+        return changeCount
+    }
+
+    private func recentThreads(refreshAt: Date) async throws -> [CodexThreadActivity] {
+        let dbThreads = try? threadStore.recentThreads(limit: Self.maxRecentThreads)
+        let fallbackLogFiles = await logIngestor.recentLogFiles(
+            referenceDate: refreshAt,
+            lookbackDays: Self.logLookbackDays,
+            limit: Self.maxFallbackLogFiles
+        )
+        guard shouldAugmentThreadsFromLogs(dbThreads: dbThreads ?? [], recentLogFiles: fallbackLogFiles) else {
+            return dbThreads ?? []
+        }
+
+        var mergedBySessionID: [String: CodexThreadActivity] = [:]
+        for thread in dbThreads ?? [] {
+            mergedBySessionID[thread.sessionID] = thread
+        }
+
+        for fileURL in fallbackLogFiles {
+            guard let thread = try await threadFromRolloutFile(fileURL) else { continue }
+            if mergedBySessionID[thread.sessionID] == nil {
+                mergedBySessionID[thread.sessionID] = thread
+            }
+        }
+
+        return mergedBySessionID.values
+            .sorted { lhs, rhs in lhs.updatedAt > rhs.updatedAt }
+            .prefix(Self.maxRecentThreads)
+            .map { $0 }
+    }
+
+    private func shouldAugmentThreadsFromLogs(
+        dbThreads: [CodexThreadActivity],
+        recentLogFiles: [URL]
+    ) -> Bool {
+        guard !recentLogFiles.isEmpty else { return false }
+        guard let latestLogFile = recentLogFiles.first,
+              let latestLogModifiedAt = fileModifiedAt(latestLogFile) else {
+            return dbThreads.isEmpty
+        }
+        guard let latestThreadAt = dbThreads.first?.updatedAt else {
+            return true
+        }
+        return latestLogModifiedAt > latestThreadAt.addingTimeInterval(Self.threadStoreFreshnessSlack)
+    }
+
+    private func threadFromRolloutFile(_ fileURL: URL) async throws -> CodexThreadActivity? {
+        guard let metadata = try await logIngestor.sessionMetadata(in: fileURL) else { return nil }
+        let modifiedAt = fileModifiedAt(fileURL) ?? metadata.startedAt
+        let cwd = metadata.cwd ?? fileURL.deletingLastPathComponent().path
+        return CodexThreadActivity(
+            sessionID: metadata.sessionID,
+            updatedAt: modifiedAt,
+            rolloutPath: fileURL.path,
+            cwd: cwd
+        )
+    }
+
+    private func fileModifiedAt(_ fileURL: URL) -> Date? {
+        try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+    }
+
+    private func snapshot(for event: TokenCountEvent) -> RateLimitsSnapshot? {
+        guard let primary = event.primary, let secondary = event.secondary else {
+            return nil
+        }
+        let fiveHour = UsageWindow(
+            kind: .fiveHour,
+            usedPercent: primary.usedPercent,
+            windowMinutes: primary.windowMinutes,
+            resetsAt: primary.resetsAt,
+            isStale: false,
+            assumedReset: false
+        )
+        let weekly = UsageWindow(
+            kind: .weekly,
+            usedPercent: secondary.usedPercent,
+            windowMinutes: secondary.windowMinutes,
+            resetsAt: secondary.resetsAt,
+            isStale: false,
+            assumedReset: false
+        )
+        return RateLimitsSnapshot(capturedAt: event.timestamp, fiveHour: fiveHour, weekly: weekly, source: .sessionLog)
+    }
+
+    private func inferredSnapshot(from existing: RateLimitsSnapshot, latestActivityAt: Date) -> RateLimitsSnapshot {
+        var fiveHour = existing.fiveHour
+        var weekly = existing.weekly
+        var capturedAt = existing.capturedAt
+        var changed = false
+
+        let shouldReanchorFiveHour = latestActivityAt > existing.capturedAt
+            && (existing.fiveHour.assumedReset || latestActivityAt > existing.fiveHour.resetsAt)
+        if shouldReanchorFiveHour {
+            let windowMinutes = max(existing.fiveHour.windowMinutes, 300)
+            fiveHour = UsageWindow(
+                kind: .fiveHour,
+                usedPercent: 0,
+                windowMinutes: windowMinutes,
+                resetsAt: latestActivityAt.addingTimeInterval(TimeInterval(windowMinutes * 60)),
+                isStale: true,
+                assumedReset: true
+            )
+            capturedAt = max(capturedAt, latestActivityAt)
+            changed = true
+        }
+
+        if latestActivityAt > existing.weekly.resetsAt {
+            let windowMinutes = max(existing.weekly.windowMinutes, 7 * 24 * 60)
+            weekly = UsageWindow(
+                kind: .weekly,
+                usedPercent: 0,
+                windowMinutes: windowMinutes,
+                resetsAt: latestActivityAt.addingTimeInterval(TimeInterval(windowMinutes * 60)),
+                isStale: true,
+                assumedReset: true
+            )
+            capturedAt = max(capturedAt, latestActivityAt)
+            changed = true
+        }
+
+        guard changed else { return existing }
+        return RateLimitsSnapshot(
+            capturedAt: capturedAt,
+            fiveHour: fiveHour,
+            weekly: weekly,
+            source: existing.source
+        )
+    }
+
+    private func recordAuthObservation(_ identity: AuthAccountIdentity, observedAt: Date) {
+        if let last = state.authObservations.last,
+           last.email == identity.email,
+           last.subject == identity.subject,
+           last.accountId == identity.accountId,
+           abs(last.observedAt.timeIntervalSince(observedAt)) < 1 {
             return
         }
-        guard let accountIndex = state.accounts.firstIndex(where: { $0.email == activeEmail }) else { return }
 
-        let cutoff = authChangeCutoff
-        Task {
-            do {
-                guard let latestEvent = try await logIngestor.ingest(fileURL: fileURL, cutoff: cutoff) else { return }
-                guard let primary = latestEvent.primary, let secondary = latestEvent.secondary else { return }
+        state.authObservations.append(AuthObservation(
+            email: identity.email,
+            subject: identity.subject,
+            accountId: identity.accountId,
+            observedAt: observedAt
+        ))
+        pruneAuthObservations()
+    }
 
-                let fiveHour = UsageWindow(
-                    kind: .fiveHour,
-                    usedPercent: primary.usedPercent,
-                    windowMinutes: primary.windowMinutes,
-                    resetsAt: primary.resetsAt,
-                    isStale: false,
-                    assumedReset: false
-                )
-                let weekly = UsageWindow(
-                    kind: .weekly,
-                    usedPercent: secondary.usedPercent,
-                    windowMinutes: secondary.windowMinutes,
-                    resetsAt: secondary.resetsAt,
-                    isStale: false,
-                    assumedReset: false
-                )
-                let snapshot = RateLimitsSnapshot(capturedAt: latestEvent.timestamp, fiveHour: fiveHour, weekly: weekly, source: .sessionLog)
-                if state.accounts[accountIndex].lastSnapshot?.capturedAt == snapshot.capturedAt {
-                    return
-                }
-                state.accounts[accountIndex].lastSnapshot = snapshot
-                state.accounts[accountIndex].lastUpdated = Date()
-                state.lastRefresh = Date()
-                lastRefreshSource = snapshot.source
-                persist()
-                evaluateNotifications(for: state.accounts[accountIndex])
-            } catch {
-                return
-            }
+    private func pruneAuthObservations() {
+        state.authObservations = Array(state.authObservations.suffix(Self.maxAuthObservations))
+    }
+
+    private func pruneSessionBindings(
+        _ bindings: [String: SessionAccountBinding],
+        configuredEmails: Set<String>
+    ) -> [String: SessionAccountBinding] {
+        let cutoff = Date().addingTimeInterval(-Self.sessionBindingRetention)
+        return bindings.filter { _, binding in
+            configuredEmails.contains(binding.email)
+                && binding.lastObservedAt >= cutoff
+                && FileManager.default.fileExists(atPath: binding.rolloutPath)
         }
     }
 
@@ -500,6 +780,38 @@ final class AppViewModel: ObservableObject {
         return "gpt-5.1-codex-mini"
     }
 
+    private func waitForRefreshToComplete(timeout: TimeInterval) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while isRefreshing && Date() < deadline {
+            try? await Task.sleep(nanoseconds: Self.refreshPollInterval)
+        }
+    }
+
+    private func refreshUntilSnapshotAdvances(
+        for email: String,
+        baselineCapturedAt: Date?
+    ) async {
+        for _ in 0..<Self.manualRefreshRetryCount {
+            refreshFromLogs(force: true)
+            await waitForRefreshToComplete(timeout: Self.manualRefreshScanTimeout)
+            guard !hasSnapshotAdvanced(for: email, baselineCapturedAt: baselineCapturedAt) else {
+                return
+            }
+            try? await Task.sleep(nanoseconds: Self.manualRefreshRetryDelay)
+        }
+    }
+
+    private func hasSnapshotAdvanced(for email: String, baselineCapturedAt: Date?) -> Bool {
+        guard let currentCapturedAt = state.accounts
+            .first(where: { $0.email == email })?
+            .lastSnapshot?
+            .capturedAt else {
+            return false
+        }
+        guard let baselineCapturedAt else { return true }
+        return currentCapturedAt > baselineCapturedAt
+    }
+
     private func persist() {
         guard let store else { return }
         do {
@@ -509,22 +821,58 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    private func defaultLogsURL() -> URL {
-        URL(fileURLWithPath: "~/.codex/sessions").expandingTildeInPath
-    }
-
-    private func defaultAuthURL() -> URL {
-        URL(fileURLWithPath: "~/.codex/auth.json").expandingTildeInPath
+    private func migrateCodexAccountNumbersIfNeeded() {
+        let numbers = state.accounts.map(\.codexNumber).sorted()
+        let expected = Array(2...(numbers.count + 1))
+        guard !numbers.isEmpty, numbers == expected else { return }
+        state.accounts = state.accounts.map { account in
+            var updated = account
+            updated.codexNumber -= 1
+            return updated
+        }.sorted { $0.codexNumber < $1.codexNumber }
+        persist()
     }
 
     private func authFileModifiedAt() -> Date? {
-        let url = defaultAuthURL()
+        let url = authURL
         do {
             let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
             return attributes[.modificationDate] as? Date
         } catch {
             return nil
         }
+    }
+
+    private func currentIdentity() -> AuthAccountIdentity? {
+        try? authDecoder.loadActiveAccount(from: authURL)
+    }
+
+    private var shouldAttemptForcedRefreshAfterScan: Bool {
+        guard let activeEmail = state.activeEmail,
+              let account = state.accounts.first(where: { $0.email == activeEmail }),
+              let snapshot = account.lastSnapshot else {
+            return false
+        }
+        return snapshot.fiveHour.assumedReset || snapshot.weekly.assumedReset
+    }
+
+    private func threadActivityFiles() -> [URL] {
+        let walURL = URL(fileURLWithPath: threadDatabaseURL.path + "-wal")
+        return [threadDatabaseURL, walURL, threadDatabaseURL.deletingLastPathComponent()]
+    }
+
+    private func sessionMetadataByRolloutPath(
+        recentThreads: [CodexThreadActivity]
+    ) async throws -> [String: SessionMetadata] {
+        var metadataByRolloutPath: [String: SessionMetadata] = [:]
+
+        for thread in recentThreads {
+            let fileURL = URL(fileURLWithPath: thread.rolloutPath)
+            guard let metadata = try await logIngestor.sessionMetadata(in: fileURL) else { continue }
+            metadataByRolloutPath[thread.rolloutPath] = metadata
+        }
+
+        return metadataByRolloutPath
     }
 
 }
@@ -540,5 +888,38 @@ private extension AppViewModel {
     // Safety net in case filesystem events are missed (sleep/wake, log rotation, etc.).
     // Parsing is tail-based so this is intentionally kept reasonably frequent.
     static let defaultHealthCheckInterval: TimeInterval = 5 * 60
+    static let authDebounceInterval: TimeInterval = 0.5
+    static let threadDebounceInterval: TimeInterval = 0.25
+    static let logDebounceInterval: TimeInterval = 0.2
+    static let stateDebounceInterval: TimeInterval = 1
+    static let threadStoreFreshnessSlack: TimeInterval = 60
+    static let refreshPollInterval: UInt64 = 50_000_000
+    static let manualRefreshScanTimeout: TimeInterval = 0.8
+    static let manualRefreshRetryCount = 6
+    static let manualRefreshRetryDelay: UInt64 = 200_000_000
     static let logTailBytes: Int = 256 * 1024
+    static let maxRecentThreads: Int = 96
+    static let maxFallbackLogFiles: Int = 96
+    static let logLookbackDays: Int = 14
+    static let maxAuthObservations: Int = 64
+    static let sessionBindingRetention: TimeInterval = 45 * 24 * 60 * 60
+}
+
+private extension AppViewModel {
+    enum RefreshRequest: Equatable {
+        case none
+        case normal
+        case force
+
+        mutating func merge(force: Bool) {
+            switch (self, force) {
+            case (.force, _), (_, true):
+                self = .force
+            case (.none, false):
+                self = .normal
+            case (.normal, false):
+                break
+            }
+        }
+    }
 }

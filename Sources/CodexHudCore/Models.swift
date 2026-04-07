@@ -67,6 +67,8 @@ public struct AppState: Codable, Equatable {
     public var dailyHelloRecords: [String: DailyHelloRecord]
     public var weeklyReminderRecords: [String: WeeklyReminderRecord]
     public var helloNotificationRecords: [String: Date]
+    public var sessionBindings: [String: SessionAccountBinding]
+    public var authObservations: [AuthObservation]
 
     public init(
         accounts: [AccountRecord],
@@ -76,7 +78,9 @@ public struct AppState: Codable, Equatable {
         forcedRefreshRecords: [String: ForcedRefreshRecord] = [:],
         dailyHelloRecords: [String: DailyHelloRecord] = [:],
         weeklyReminderRecords: [String: WeeklyReminderRecord] = [:],
-        helloNotificationRecords: [String: Date] = [:]
+        helloNotificationRecords: [String: Date] = [:],
+        sessionBindings: [String: SessionAccountBinding] = [:],
+        authObservations: [AuthObservation] = []
     ) {
         self.accounts = accounts
         self.activeEmail = activeEmail
@@ -86,6 +90,8 @@ public struct AppState: Codable, Equatable {
         self.dailyHelloRecords = dailyHelloRecords
         self.weeklyReminderRecords = weeklyReminderRecords
         self.helloNotificationRecords = helloNotificationRecords
+        self.sessionBindings = sessionBindings
+        self.authObservations = authObservations
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -97,6 +103,8 @@ public struct AppState: Codable, Equatable {
         case dailyHelloRecords
         case weeklyReminderRecords
         case helloNotificationRecords
+        case sessionBindings
+        case authObservations
     }
 
     public init(from decoder: Decoder) throws {
@@ -109,6 +117,8 @@ public struct AppState: Codable, Equatable {
         self.dailyHelloRecords = try container.decodeIfPresent([String: DailyHelloRecord].self, forKey: .dailyHelloRecords) ?? [:]
         self.weeklyReminderRecords = try container.decodeIfPresent([String: WeeklyReminderRecord].self, forKey: .weeklyReminderRecords) ?? [:]
         self.helloNotificationRecords = try container.decodeIfPresent([String: Date].self, forKey: .helloNotificationRecords) ?? [:]
+        self.sessionBindings = try container.decodeIfPresent([String: SessionAccountBinding].self, forKey: .sessionBindings) ?? [:]
+        self.authObservations = try container.decodeIfPresent([AuthObservation].self, forKey: .authObservations) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -121,5 +131,7 @@ public struct AppState: Codable, Equatable {
         try container.encode(dailyHelloRecords, forKey: .dailyHelloRecords)
         try container.encode(weeklyReminderRecords, forKey: .weeklyReminderRecords)
         try container.encode(helloNotificationRecords, forKey: .helloNotificationRecords)
+        try container.encode(sessionBindings, forKey: .sessionBindings)
+        try container.encode(authObservations, forKey: .authObservations)
     }
 }

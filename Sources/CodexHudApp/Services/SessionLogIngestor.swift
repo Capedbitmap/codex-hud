@@ -4,32 +4,27 @@ import CodexHudCore
 actor SessionLogIngestor {
     private let logsURL: URL
     private let tailBytes: Int
-    private var currentFile: URL?
-    private var reader: SessionLogIncrementalReader?
+    private let parser = SessionLogParser()
+    private let tailReader: SessionLogTailReader
 
     init(logsURL: URL, tailBytes: Int) {
         self.logsURL = logsURL
         self.tailBytes = tailBytes
+        self.tailReader = SessionLogTailReader(maxBytes: tailBytes)
     }
 
-    func refreshLatestLogFile(cutoff: Date?) throws -> TokenCountEvent? {
-        let locator = SessionLogLocator(logsURL: logsURL)
-        guard let latestFile = locator.latestLogFile() else {
-            throw SessionLogError.logsNotFound
-        }
-        return try ingest(fileURL: latestFile, cutoff: cutoff)
+    func recentLogFiles(referenceDate: Date = Date(), lookbackDays: Int, limit: Int) -> [URL] {
+        SessionLogLocator(logsURL: logsURL).recentLogFiles(referenceDate: referenceDate, lookbackDays: lookbackDays, limit: limit)
     }
 
-    func ingest(fileURL: URL, cutoff: Date?) throws -> TokenCountEvent? {
+    func sessionMetadata(in fileURL: URL) throws -> SessionMetadata? {
+        try parser.sessionMetadata(inFile: fileURL)
+    }
+
+    func latestTokenCountEvent(in fileURL: URL, since cutoff: Date?) throws -> TokenCountEvent? {
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             throw SessionLogError.logsNotFound
         }
-        if currentFile != fileURL || reader == nil {
-            let fileSize = try fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-            let startOffset = UInt64(max(0, fileSize - tailBytes))
-            reader = try SessionLogIncrementalReader(fileURL: fileURL, startingOffset: startOffset)
-            currentFile = fileURL
-        }
-        return try reader?.readNewTokenCountEvent(since: cutoff)
+        return try tailReader.latestTokenCountEvent(inFile: fileURL, since: cutoff)
     }
 }
